@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "PlannedRead": {
+      "additionalProperties": false,
+      "description": "A file the adapter intends to inspect, without reading its contents.",
+      "properties": {
+        "locator": {
+          "title": "Locator",
+          "type": "string"
+        },
+        "modified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modified At"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        }
+      },
+      "required": [
+        "locator",
+        "reason"
+      ],
+      "title": "PlannedRead",
+      "type": "object"
+    },
+    "RequestedPermissions": {
+      "additionalProperties": false,
+      "description": "The adapter's requested access after intersection with command policy.",
+      "properties": {
+        "may_write": {
+          "default": false,
+          "title": "May Write",
+          "type": "boolean"
+        },
+        "network_hosts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Network Hosts",
+          "type": "array"
+        },
+        "read_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Read Paths",
+          "type": "array"
+        }
+      },
+      "title": "RequestedPermissions",
+      "type": "object"
+    }
+  },
+  "$id": "https://dossify.dev/schemas/execution-plan.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Canonical, reviewable preflight artifact.  The core verifies its hash.",
+  "properties": {
+    "adapter_id": {
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "cache_action": {
+      "default": "read_or_write",
+      "enum": [
+        "bypass",
+        "read_or_write"
+      ],
+      "title": "Cache Action",
+      "type": "string"
+    },
+    "config_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Config Fingerprint",
+      "type": "string"
+    },
+    "format_version": {
+      "default": "1.0",
+      "title": "Format Version",
+      "type": "string"
+    },
+    "manifest_version": {
+      "title": "Manifest Version",
+      "type": "string"
+    },
+    "permissions": {
+      "$ref": "#/$defs/RequestedPermissions"
+    },
+    "plan_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "provider_id": {
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PlannedRead"
+      },
+      "title": "Reads",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "provider_id",
+    "adapter_id",
+    "manifest_version",
+    "config_fingerprint",
+    "permissions",
+    "plan_id"
+  ],
+  "title": "ExecutionPlan",
+  "type": "object"
+}
