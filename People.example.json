@@ -1,0 +1,10 @@
+{
+  "Example Person": {
+    "instagram": [
+      {"handle": "example_handle", "display": "Example Display Name"}
+    ],
+    "facebook_names": ["Example Person"],
+    "nextcloud_uids": [],
+    "immich_person_ids": []
+  }
+}
