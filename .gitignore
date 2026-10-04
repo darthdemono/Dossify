@@ -1,0 +1,45 @@
+# Python build and test output
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments and local secrets
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Private Dossify installation data: keep examples public, never the real data.
+dossify.toml
+People.json
+Journal Rules.json
+private/
+exports/
+cache/
+
+# Local AI instructions, review notes, and handoffs.
+AGENTS.md
+CLAUDE.md
+CODEX.md
+GEMINI.md
+COPILOT.md
+AI.md
+Review/
+Handoff/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
