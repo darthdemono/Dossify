@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dossify People.json",
+  "description": "Private canonical people keyed by the name Dossify should render. Provider fields not yet understood by the public engine are allowed so a private identity map can grow without data loss.",
+  "type": "object",
+  "propertyNames": {
+    "type": "string",
+    "minLength": 1
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/person"
+  },
+  "$defs": {
+    "person": {
+      "type": "object",
+      "properties": {
+        "instagram": {
+          "type": "array",
+          "description": "Each handle and display value belongs to the same Instagram account.",
+          "items": {
+            "$ref": "#/$defs/instagramIdentity"
+          }
+        },
+        "facebook_names": {
+          "$ref": "#/$defs/stringList"
+        },
+        "facebook_usernames": {
+          "$ref": "#/$defs/stringList"
+        },
+        "nextcloud_uids": {
+          "$ref": "#/$defs/stringList"
+        },
+        "immich_person_ids": {
+          "$ref": "#/$defs/stringList"
+        }
+      },
+      "additionalProperties": true
+    },
+    "instagramIdentity": {
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": ["string", "null"]
+        },
+        "display": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["handle"]
+        },
+        {
+          "required": ["display"]
+        }
+      ]
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
