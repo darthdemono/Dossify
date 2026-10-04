@@ -1,0 +1,16 @@
+{
+  "buckets": {
+    "aw-watcher-window_test": {
+      "events": [
+        {
+          "timestamp": "2026-01-02T10:00:00+00:00",
+          "duration": 90,
+          "data": {
+            "app": "Code",
+            "title": "private-project-secret"
+          }
+        }
+      ]
+    }
+  }
+}
