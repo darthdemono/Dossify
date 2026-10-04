@@ -1,0 +1,48 @@
+{
+  "source_descriptions": {
+    "instagram": "A private Instagram export, read without message bodies."
+  },
+  "bank_names": [["EXAMPLE MERCHANT", "Example merchant"]],
+  "save_files": [],
+  "photo_policy": {
+    "my_cameras": {"EXAMPLE-MODEL": "Example camera"},
+    "self_names": ["My library name"],
+    "not_mine_names": [],
+    "special_album": "",
+    "derived_name_pattern": "^$",
+    "camera_name_pattern": "^(IMG|VID)"
+  },
+  "exports": {
+    "roots": ["/absolute/path/to/exports"],
+    "parts": {
+      "search_text": false,
+      "browser_urls": false,
+      "message_threads": false,
+      "message_text": false,
+      "mail": false,
+      "takeout_photos": false,
+      "takeout_calendar": false
+    },
+    "move_utc": null,
+    "before_move_timezone": "UTC",
+    "known_places": []
+  },
+  "social": {
+    "instagram_title_renames": {},
+    "communities": {},
+    "noise_chats": [],
+    "roster_max": 200,
+    "inline_max": 6
+  },
+  "paths": {
+    "neptun_ics": "",
+    "xiaomi_backup_dir": "",
+    "xiaomi_dashboard_dir": "",
+    "erste_transactions_csv": "",
+    "work_log": "",
+    "brac_statements_dir": "",
+    "simkl_backup_csv": ""
+  },
+  "accounts": {},
+  "labels": {}
+}
