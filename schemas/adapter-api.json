@@ -1,0 +1,85 @@
+{
+  "$id": "https://dossify.dev/schemas/adapter-api.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Static capabilities and compatibility declared before an adapter runs.",
+  "properties": {
+    "adapter_api_max": {
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Adapter Api Max",
+      "type": "string"
+    },
+    "adapter_api_min": {
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Adapter Api Min",
+      "type": "string"
+    },
+    "adapter_id": {
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "cache_contract_version": {
+      "default": "1.0",
+      "title": "Cache Contract Version",
+      "type": "string"
+    },
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "config_schema_id": {
+      "title": "Config Schema Id",
+      "type": "string"
+    },
+    "config_schema_version": {
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Config Schema Version",
+      "type": "string"
+    },
+    "deterministic_output": {
+      "title": "Deterministic Output",
+      "type": "boolean"
+    },
+    "display_name": {
+      "minLength": 1,
+      "title": "Display Name",
+      "type": "string"
+    },
+    "provider_id": {
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "requested_permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Requested Permissions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "provider_id",
+    "adapter_id",
+    "display_name",
+    "adapter_version",
+    "adapter_api_min",
+    "adapter_api_max",
+    "config_schema_version",
+    "config_schema_id",
+    "capabilities",
+    "requested_permissions",
+    "deterministic_output"
+  ],
+  "title": "AdapterManifest",
+  "type": "object"
+}
