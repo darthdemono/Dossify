@@ -1,0 +1,23 @@
+{
+  "$id": "https://dossify.dev/schemas/adapters/immich-export/1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Common, intentionally small configuration for a local P0 source.",
+  "properties": {
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "source": {
+      "format": "path",
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source"
+  ],
+  "title": "ExportConfig",
+  "type": "object"
+}
