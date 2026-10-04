@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dossify Journal Rules.json",
+  "description": "Private, installation-specific journal rules. Paths, aliases, account names, and export policy belong here instead of in Dossify source code.",
+  "type": "object",
+  "properties": {
+    "source_descriptions": {
+      "$ref": "#/$defs/stringMap"
+    },
+    "bank_names": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {"type": "string"},
+          {"type": "string"}
+        ],
+        "items": false
+      }
+    },
+    "save_files": {
+      "$ref": "#/$defs/stringList"
+    },
+    "photo_policy": {
+      "type": "object",
+      "properties": {
+        "my_cameras": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "self_names": {
+          "$ref": "#/$defs/stringList"
+        },
+        "not_mine_names": {
+          "$ref": "#/$defs/stringList"
+        },
+        "special_album": {
+          "type": "string"
+        },
+        "derived_name_pattern": {
+          "type": "string"
+        },
+        "camera_name_pattern": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "exports": {
+      "type": "object",
+      "properties": {
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": ["string", "null"]
+          }
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "move_utc": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "before_move_timezone": {
+          "type": "string"
+        },
+        "known_places": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": ["string", "number"]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "social": {
+      "type": "object",
+      "properties": {
+        "instagram_title_renames": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "communities": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "noise_chats": {
+          "$ref": "#/$defs/stringList"
+        },
+        "roster_max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inline_max": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "accounts": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {"$ref": "#/$defs/stringList"}
+        ]
+      }
+    },
+    "labels": {
+      "$ref": "#/$defs/stringMap"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}
