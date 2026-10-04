@@ -1,0 +1,40 @@
+# Copy this to a private workspace. Do not put real paths, exports, or secrets
+# in this repository.
+people_file = "People.json"
+output_dir = "Journal"
+
+[journal]
+# Private data which Dossify reads but never creates or commits.
+workspace_root = "/absolute/path/to/private-workspace"
+rules_file = "Journal Rules.json"
+cache_dir = "/absolute/path/to/cache/dossify"
+# Optional source checkout used by the Canvas adapter.
+elteportal_path = "/absolute/path/to/EltePortal"
+
+[providers.instagram]
+enabled = true
+
+[providers.git]
+enabled = true
+
+# Export-first v1 adapters. Each reads only the supplied file or directory;
+# `dossify plan` previews every intended read before `dossify facts` parses it.
+[providers.activitywatch]
+enabled = false
+source = "/absolute/path/to/activitywatch-export.json"
+
+[providers.nextcloud]
+enabled = false
+source = "/absolute/path/to/nextcloud-activity.json"
+
+[providers.immich]
+enabled = false
+source = "/absolute/path/to/immich-metadata.json"
+
+[providers.google_takeout]
+enabled = false
+source = "/absolute/path/to/Takeout"
+
+[providers.health_archive]
+enabled = false
+source = "/absolute/path/to/apple-health-export.xml"
