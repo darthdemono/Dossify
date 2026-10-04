@@ -1,0 +1,345 @@
+{
+  "$defs": {
+    "CacheDirective": {
+      "additionalProperties": false,
+      "description": "Core-owned cache decision recorded with every result.",
+      "properties": {
+        "cache_key": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Cache Key",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "hit",
+            "miss",
+            "bypass"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "reusable": {
+          "title": "Reusable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reusable",
+        "cache_key",
+        "decision",
+        "reason"
+      ],
+      "title": "CacheDirective",
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "description": "The time range an adapter actually observed, never an assertion of absence.",
+      "properties": {
+        "complete": {
+          "default": false,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "ends_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ends At"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "starts_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Starts At"
+        }
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "Fact": {
+      "additionalProperties": false,
+      "description": "A source-linked, renderer-neutral item of personal evidence.",
+      "properties": {
+        "adapter_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "display": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display"
+        },
+        "event_type": {
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "provider_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "retention": {
+          "default": "cache",
+          "enum": [
+            "ephemeral",
+            "cache",
+            "archive"
+          ],
+          "title": "Retention",
+          "type": "string"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity",
+          "default": "private"
+        },
+        "source_locator": {
+          "title": "Source Locator",
+          "type": "string"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Record Id"
+        },
+        "time_precision": {
+          "$ref": "#/$defs/TimePrecision",
+          "default": "instant"
+        },
+        "values": {
+          "additionalProperties": true,
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "provider_id",
+        "adapter_id",
+        "source_locator",
+        "observed_at",
+        "event_type"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "InputFingerprint": {
+      "additionalProperties": false,
+      "description": "An immutable description of one input observed during execution.",
+      "properties": {
+        "locator": {
+          "title": "Locator",
+          "type": "string"
+        },
+        "modified_at": {
+          "format": "date-time",
+          "title": "Modified At",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "locator",
+        "sha256",
+        "size_bytes",
+        "modified_at"
+      ],
+      "title": "InputFingerprint",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Evidence needed to explain and reproduce an adapter result.",
+      "properties": {
+        "adapter_api_version": {
+          "title": "Adapter Api Version",
+          "type": "string"
+        },
+        "adapter_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "cache": {
+          "$ref": "#/$defs/CacheDirective"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "effective_permissions": {
+          "$ref": "#/$defs/RequestedPermissions"
+        },
+        "input_fingerprints": {
+          "items": {
+            "$ref": "#/$defs/InputFingerprint"
+          },
+          "title": "Input Fingerprints",
+          "type": "array"
+        },
+        "plan_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "provider_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Provider Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_id",
+        "adapter_id",
+        "adapter_version",
+        "adapter_api_version",
+        "plan_id",
+        "input_fingerprints",
+        "effective_permissions",
+        "coverage",
+        "cache"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "RequestedPermissions": {
+      "additionalProperties": false,
+      "description": "The adapter's requested access after intersection with command policy.",
+      "properties": {
+        "may_write": {
+          "default": false,
+          "title": "May Write",
+          "type": "boolean"
+        },
+        "network_hosts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Network Hosts",
+          "type": "array"
+        },
+        "read_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Read Paths",
+          "type": "array"
+        }
+      },
+      "title": "RequestedPermissions",
+      "type": "object"
+    },
+    "Sensitivity": {
+      "description": "How cautiously a renderer should treat a fact's values and display text.",
+      "enum": [
+        "public",
+        "private",
+        "sensitive"
+      ],
+      "title": "Sensitivity",
+      "type": "string"
+    },
+    "TimePrecision": {
+      "enum": [
+        "instant",
+        "day"
+      ],
+      "title": "TimePrecision",
+      "type": "string"
+    }
+  },
+  "$id": "https://dossify.dev/schemas/adapter-result.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Validated execution result.  Facts are sorted by the core before output.",
+  "properties": {
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/Fact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "facts",
+    "provenance"
+  ],
+  "title": "AdapterResult",
+  "type": "object"
+}
