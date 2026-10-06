@@ -11,6 +11,16 @@ cache_dir = "/absolute/path/to/cache/dossify"
 # Optional source checkout used by the Canvas adapter.
 elteportal_path = "/absolute/path/to/EltePortal"
 
+# Optional live People registry synchronization. Values here are service
+# locations and environment-variable names only, never real credentials.
+[sync]
+nextcloud_url = "https://nextcloud.example/remote.php/dav/addressbooks/users/user/contacts"
+nextcloud_user = "user"
+nextcloud_password_env = "DOSSIFY_NEXTCLOUD_APP_PASSWORD"
+immich_url = "https://immich.example"
+immich_api_key_env = "DOSSIFY_IMMICH_API_KEY"
+snapshot_dir = "sync-snapshots"
+
 [providers.instagram]
 enabled = true
 
