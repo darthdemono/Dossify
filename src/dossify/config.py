@@ -24,6 +24,24 @@ class JournalSettings(BaseModel):
     elteportal_path: Path | None = None
 
 
+class SyncSettings(BaseModel):
+    """Private service settings for the explicit People registry synchronizer.
+
+    Secret *values* never go in TOML.  The two credential settings name
+    environment variables supplied by the caller.  The command is read-only
+    unless its ``--apply`` switch is used.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nextcloud_url: str | None = None
+    nextcloud_user: str | None = None
+    nextcloud_password_env: str | None = None
+    immich_url: str | None = None
+    immich_api_key_env: str | None = None
+    snapshot_dir: Path | None = None
+
+
 class DossifyConfig(BaseModel):
     """Configuration that remains in the private workspace, not Dossify itself."""
 
@@ -32,6 +50,7 @@ class DossifyConfig(BaseModel):
     people_file: Path | None = None
     output_dir: Path | None = None
     journal: JournalSettings = Field(default_factory=JournalSettings)
+    sync: SyncSettings = Field(default_factory=SyncSettings)
     providers: dict[str, dict[str, object]] = Field(default_factory=dict)
 
 
@@ -49,6 +68,8 @@ def load_config(path: Path) -> DossifyConfig:
         value = getattr(config.journal, field)
         if value and not value.is_absolute():
             setattr(config.journal, field, (base / value).resolve())
+    if config.sync.snapshot_dir and not config.sync.snapshot_dir.is_absolute():
+        config.sync.snapshot_dir = (base / config.sync.snapshot_dir).resolve()
     # P0 adapters accept one explicitly configured export source.  Resolving it
     # here gives plans an unambiguous, reviewable path and keeps private TOML
     # portable when the workspace moves.
