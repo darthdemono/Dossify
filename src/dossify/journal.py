@@ -9,9 +9,13 @@ is never touched. Same for <!-- autoref:begin/end -->.
 Design and the blind spots of each source: Journal/Auto Journal - Spec and Method.md
 """
 import collections, csv, glob, html, importlib, io, json, os, re, sqlite3, subprocess, sys, tarfile, tempfile, zipfile
-from collections import defaultdict, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from datetime import datetime, timedelta, timezone as _tz
 from pathlib import Path
+
+from dossify import oslog
+from dossify.people import journal_identity, load_people, normalize_identifier
+
 try:
     from zoneinfo import ZoneInfo
     BUDAPEST = ZoneInfo("Europe/Budapest")
@@ -34,13 +38,11 @@ def configure(config) -> None:
     global BANK_NAMES, SAVE_FILES, MY_CAMERAS, ME_NAMES, NOT_MINE, ANIK_ALBUM
     global DERIVED_NAME, CAMERA_NAME, EXPORT_ROOTS, EXPORT_PARTS, DHAKA, MOVE, KNOWN_PLACES
     global IG_TITLE_RENAMES, META_COMMUNITIES, META_NOISE_CHATS, GC_ROSTER_MAX, GC_INLINE_MAX
-    global NEPTUN_EN, XIAOMI_BACKUP_DIR, XIAOMI_DASHBOARD_DIR
+    global NEPTUN_EN, XIAOMI_BACKUP_DIR, XIAOMI_DASHBOARD_DIR, OS_LOG_DIR, CRASH_IGNORE
     if not config.output_dir or not config.journal.workspace_root:
         raise ValueError("dossify.toml needs output_dir and [journal].workspace_root")
     if not config.people_file or not config.journal.rules_file:
         raise ValueError("dossify.toml needs people_file and [journal].rules_file")
-    from dossify.people import journal_identity, load_people
-
     BASE = str(config.output_dir.resolve())
     ARCHIVE = str(config.journal.workspace_root.resolve())
     CACHE = str((config.journal.cache_dir or Path(HOME, ".cache", "dossify")).resolve())
@@ -78,6 +80,8 @@ def configure(config) -> None:
     NEPTUN_EN = str(paths.get("neptun_ics") or "")
     XIAOMI_BACKUP_DIR = str(paths.get("xiaomi_backup_dir") or "")
     XIAOMI_DASHBOARD_DIR = str(paths.get("xiaomi_dashboard_dir") or "")
+    OS_LOG_DIR = str(paths.get("os_log_dir") or "")
+    CRASH_IGNORE = list((RULES.get("os_log") or {}).get("crash_ignore") or [])
     if config.journal.elteportal_path:
         sys.path.insert(0, str(config.journal.elteportal_path))
         canvas_api = importlib.import_module("elteportal.canvas")
@@ -96,6 +100,8 @@ MONTHS = ["January", "February", "March", "April", "May", "June", "July",
 # footnote definitions, keyed by source
 # --------------------------------------------------------------------------
 SOURCES: dict[str, str] = {}
+OS_LOG_DIR = ""
+CRASH_IGNORE: list[str] = []
 
 
 # --------------------------------------------------------------------------
@@ -2034,9 +2040,20 @@ def handle_for_display(card, display):
         for person in (identity().get("people") or [])
         if person.get("name") == card
         for row in (person.get("instagram") or [])
-        if row.get("display") == display and row.get("handle")
+        if row.get("display") and normalize_identifier(row["display"]) == normalize_identifier(display)
+        and row.get("handle")
     }
     return next(iter(choices)) if len(choices) == 1 else None
+
+
+def identity_match(key, value):
+    """Look up a People.json identity without broadening the spelling match."""
+    ident = identity()
+    normalized = ident.get(key + "_normalized")
+    if normalized is not None:
+        return normalized.get(normalize_identifier(value))
+    # Compatibility for an in-memory projection created by a pre-1.0.1 engine.
+    return (ident.get(key) or {}).get(value)
 
 
 def meta_person(name, handles, service="Instagram", full=True):
@@ -2048,13 +2065,13 @@ def meta_person(name, handles, service="Instagram", full=True):
     """
     ident = identity()
     key = "by_ig_display" if service == "Instagram" else "by_fb_name"
-    card = (ident.get(key) or {}).get(name)
+    card = identity_match(key, name)
     h = handles.get(name) if handles else None
     if card is None and service == "Instagram":
         # Some threads are titled with the username rather than a display name,
         # so the display lookup misses somebody the map does know by handle.
         probe = h or re.sub(r"^@", "", name.strip())
-        card = (ident.get("by_ig_handle") or {}).get(probe)
+        card = identity_match("by_ig_handle", probe)
         if card and not h:
             h = probe
     if card and not h and service == "Instagram":
@@ -2570,27 +2587,138 @@ def a_wakatime():
     return out
 
 
+def _hm(ts):
+    return epoch_local(ts)[1]
+
+
+def _span(on, off):
+    """`HH:MM-HH:MM`, with the day offset when a session runs past midnight."""
+    if off is None:
+        return "%s-" % _hm(on)
+    gap = (datetime.fromtimestamp(off, UTC).astimezone(BUDAPEST).date()
+           - datetime.fromtimestamp(on, UTC).astimezone(BUDAPEST).date()).days
+    return "%s-%s%s" % (_hm(on), _hm(off), " +%dd" % gap if gap else "")
+
+
+def _hours(sec):
+    sec = int(sec)
+    return "%dh%02dm" % (sec // 3600, sec % 3600 // 60) if sec >= 3600 else "%dm" % (sec // 60)
+
+
 def a_boots():
-    """When the machine was on. `--list-boots` is parsed as JSON because the
-    text form separates the two timestamps by a single space, which no column
-    split survives."""
-    try:
-        r = subprocess.run(["journalctl", "--list-boots", "-o", "json", "--no-pager"],
-                           capture_output=True, text=True, timeout=60)
-        rows = json.loads(r.stdout or "[]")
-    except Exception:
-        return []
+    """When the machine was on, one line a day. Sessions come from the durable
+    OS log (wtmp reaches back further than the journal) and short bursts of
+    power cycling collapse to a count and a total instead of a line each."""
+    rows = sorted(oslog.load(OS_LOG_DIR, "boots"), key=lambda r: r["on"])
+    byday, prev = defaultdict(list), None
+    for r in rows:
+        date, _ = epoch_local(r["on"])
+        if date:
+            byday[date].append((r, prev))
+        prev = r["kernel"]
     out = []
-    for b in rows:
-        for field, verb in (("first_entry", "on"), ("last_entry", "off")):
-            if b.get("index") == 0 and verb == "off":
-                continue                      # this boot has not ended
-            usec = b.get(field)
-            if not usec:
-                continue
-            date, time = epoch_local(int(usec) / 1e6)
-            if date:
-                out.append(Fact(date, time, "PC %s" % verb, "boots"))
+    for date, items in byday.items():
+        sess = [r for r, _p in items]
+        notes = []
+        if items[0][1] and items[0][1] != items[0][0]["kernel"] or any(
+                p and p != r["kernel"] for r, p in items[1:]):
+            notes.append("new kernel %s" % sess[-1]["kernel"].split(".fc")[0])
+        if any(r["end"] == "crash" for r in sess):
+            notes.append("unclean shutdown")
+        if len(sess) <= 3:
+            text = "PC on " + ", ".join(_span(r["on"], r["off"]) for r in sess)
+        else:
+            up = sum(r["off"] - r["on"] for r in sess if r["off"])
+            text = "PC on, %d sessions, %s up" % (len(sess), _hours(up))
+        if notes:
+            text += " (%s)" % ", ".join(notes)
+        out.append(Fact(date, _hm(sess[0]["on"]), text, "boots"))
+    return out
+
+
+def a_logins():
+    """Desktop logins by name; terminal tabs only as a count, because a tab is
+    not an event worth a line."""
+    byday = defaultdict(lambda: {"tabs": 0, "desktop": []})
+    for r in oslog.load(OS_LOG_DIR, "logins"):
+        date, _ = epoch_local(r["start"])
+        if not date:
+            continue
+        if r["tty"].startswith("pts/"):
+            byday[date]["tabs"] += 1
+        else:
+            byday[date]["desktop"].append(_span(r["start"], r["end"]))
+    out = []
+    for date, d in byday.items():
+        parts = (["Desktop login " + ", ".join(d["desktop"])] if d["desktop"] else [])
+        if d["tabs"]:
+            parts.append("%d terminal tab%s" % (d["tabs"], "s" if d["tabs"] > 1 else ""))
+        out.append(Fact(date, None, ", ".join(parts), "logins"))
+    return out
+
+
+def a_dnf():
+    """Package changes I ran, merged into one line a day: updates are summed,
+    installs and removals are named."""
+    byday = defaultdict(list)
+    for r in oslog.load(OS_LOG_DIR, "dnf"):
+        date, time = epoch_local(r["ts"])
+        if date:
+            byday[date].append((time, r))
+    out = []
+    for date, rows in byday.items():
+        rows.sort(key=lambda x: x[0])
+        updated, parts = 0, []
+        for _t, r in rows:
+            words = r["cmd"].split()
+            verb = words[1] if len(words) > 1 else ""
+            names = [w for w in words[2:] if not w.startswith("-")]
+            if verb == "group" and names:          # `group install X` is install X
+                verb, names = names[0], names[1:]
+            if verb in ("update", "upgrade", "distro-sync", "system-upgrade"):
+                updated += r["n"]
+            elif verb in ("install", "reinstall", "group", "swap"):
+                parts.append("%s %s" % ("installed" if verb != "reinstall" else "reinstalled",
+                                        " ".join(names) or "packages"))
+            elif verb in ("remove", "erase", "autoremove"):
+                parts.append("removed %s" % (" ".join(names) or "packages"))
+            else:
+                parts.append("dnf %s" % " ".join(words[1:])[:40])
+        if updated:
+            parts.insert(0, "updated %d packages" % updated)
+        out.append(Fact(date, rows[0][0], "; ".join(parts), "dnf"))
+    return out
+
+
+def a_crashes():
+    """Programs that crashed, by name. Services that crash on their own are
+    filtered out in the rules file; this is what I was running."""
+    byday = defaultdict(list)
+    for r in oslog.load(OS_LOG_DIR, "crashes"):
+        date, time = epoch_local(r["ts"])
+        if date and not any(i in r["exe"] for i in CRASH_IGNORE):
+            byday[date].append((time, os.path.basename(r["exe"]) or "unknown"))
+    return [Fact(date, min(t for t, _n in rows), "Crashed: " + ", ".join(
+        "%s x%d" % (n, c) if c > 1 else n
+        for n, c in Counter(n for _t, n in rows).items()), "crashes")
+        for date, rows in byday.items()]
+
+
+def a_shell():
+    """Commands I ran in a terminal, as command names with counts and nothing
+    else. Dormant until bash history is timestamped (HISTTIMEFORMAT set)."""
+    byday = defaultdict(Counter)
+    for r in oslog.load(OS_LOG_DIR, "shell"):
+        date, _ = epoch_local(r["ts"])
+        if date:
+            byday[date][r["cmd"]] += 1
+    out = []
+    for date, c in byday.items():
+        top = c.most_common(6)
+        text = "Shell: " + ", ".join("%s x%d" % kv for kv in top)
+        if len(c) > 6:
+            text += ", +%d more" % (len(c) - 6)
+        out.append(Fact(date, None, text, "shell"))
     return out
 
 
@@ -2773,19 +2901,23 @@ def a_arr():
 
 
 def a_navidrome():
-    """Only what Last.fm never saw. Navidrome is the player Last.fm scrobbles
-    from, so everything else here would be the same play written twice."""
+    """Navidrome plays that Last.fm never received, shaped like Last.fm's own
+    facts so the renderer folds both into one "Listened to:" list. A play Last.fm
+    already holds is dropped when it lands within two minutes AND shares the
+    artist or the title, so a different track on another device is not lost."""
     db = os.path.join(HOME, "docker", "navidrome", "data", "navidrome.db")
     if not os.path.exists(db):
         return []
-    known = set()
+
+    def norm(x):
+        return re.sub(r"\W+", "", (x or "").casefold())
+
+    known = defaultdict(list)                  # minute -> [(artist, track)]
     try:
-        blob = json.load(open(os.path.join(CACHE, "lastfm.json"), encoding="utf-8"))
-        rows = blob if isinstance(blob, list) else blob.get("tracks", blob.get("scrobbles", []))
-        for r in rows or []:
-            ts = r.get("uts") or r.get("ts") or (r.get("date") or {}).get("uts")
-            if ts:
-                known.add(int(ts) // 60)
+        blob = json.load(open(LASTFM_CACHE, encoding="utf-8"))
+        for r in blob if isinstance(blob, list) else []:
+            if r.get("uts"):
+                known[int(r["uts"]) // 60].append((norm(r.get("artist")), norm(r.get("track"))))
     except Exception:
         pass
     try:
@@ -2795,23 +2927,29 @@ def a_navidrome():
             "join media_file m on m.id = s.media_file_id").fetchall()
     except Exception:
         return []
-    byday = defaultdict(list)
+    byday, seen = defaultdict(list), set()
     for ts, title, artist in rows:
         if not ts:
             continue
         minute = int(ts) // 60
-        if known and any((minute + d) in known for d in (-2, -1, 0, 1, 2)):
-            continue                          # Last.fm already has this play
+        key = (minute, norm(title), norm(artist))
+        if key in seen:                        # the same play written twice
+            continue
+        seen.add(key)
+        if any(a == key[2] or t == key[1]
+               for d in (-2, -1, 0, 1, 2) for a, t in known.get(minute + d, ())):
+            continue                           # Last.fm already has this play
         date, time = epoch_local(ts)
         if date:
-            byday[date].append((time, "%s by %s" % (title, artist)))
+            byday[date].append((time, "%s by %s" % (title, artist or "unknown artist")))
     out = []
     for date, rows2 in byday.items():
         rows2.sort()
-        f = nest(date, "Played in Navidrome, not scrobbled:",
-                 ["%s · %s" % (t, n) for t, n in rows2[:12]], "navidrome")
-        if f:
-            out.append(f)
+        if len(rows2) == 1:
+            out.append(Fact(date, rows2[0][0], rows2[0][1], "navidrome"))
+        else:
+            kids = "\n".join("    - %s - %s" % r for r in rows2)
+            out.append(Fact(date, None, "Tracks scrobbled:\n" + kids, "navidrome"))
     return out
 
 
@@ -2954,26 +3092,53 @@ def a_torrents():
 
 
 def a_games():
-    """Launcher records. Both of these keep the last launch and nothing before
-    it, so this is one line per instance, not a history."""
+    """Plays kept in the durable OS log. Each launcher keeps only the latest play
+    per game, so the log is what turns that into a history. Minecraft sessions
+    (from its own game logs) fold into one line per instance a day; a launch
+    within five minutes of a logged session is the same play."""
+    label = {"steam": "Steam", "heroic": "Heroic", "epic": "Epic", "gog": "GOG",
+             "lutris": "Lutris", "bottles": "Bottles", "minecraft": "Minecraft"}
+    byday = defaultdict(lambda: defaultdict(list))
+    seen = set()
+    rows_all = oslog.load(OS_LOG_DIR, "games")
+    sess = defaultdict(list)
+    for r in rows_all:
+        if r.get("sess_s") is not None:
+            sess[r["name"]].append(r)
+    for r in sorted(rows_all, key=lambda r: r["ts"]):
+        if oslog.STEAM_TOOLS.match(r["name"]):
+            continue
+        date, time = epoch_local(r["ts"])
+        key = (r["name"], r["ts"] // 300)
+        if not date:
+            continue
+        if r.get("store") == "minecraft":           # only the launcher's own launch repeats a session
+            if any((r["name"], r["ts"] // 300 + d) in seen for d in (-1, 0, 1)):
+                continue
+            seen.add(key)
+        if r.get("sess_s") is None and any(x["name"] == r["name"] and x.get("sess_s") is not None
+                                           and abs(x["ts"] - r["ts"]) <= 300 for x in sess.get(r["name"], ())):
+            continue                                # the launch a logged session already covers
+        byday[date][(r.get("store"), r["name"])].append((time, r["sess_s"] if "sess_s" in r else r.get("played_s"), "sess_s" in r))
     out = []
-    for cfg in sorted(glob.glob(os.path.join(
-            HOME, ".local", "share", "FreesmLauncher", "instances", "*", "instance.cfg"))):
-        vals = {}
-        try:
-            for line in open(cfg, encoding="utf-8", errors="replace"):
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    vals[k.strip()] = v.strip()
-        except OSError:
-            continue
-        ms = vals.get("lastLaunchTime")
-        name = vals.get("name") or os.path.basename(os.path.dirname(cfg))
-        if not ms or not ms.isdigit():
-            continue
-        date, time = epoch_local(int(ms) / 1000.0)
-        if date:
-            out.append(Fact(date, time, "Minecraft: launched %s" % name, "games"))
+    for date, games in byday.items():
+        for (store, name), rows in games.items():
+            n = len(rows)
+            if store == "steam" and any(x[2] for x in rows):
+                rows = [x for x in rows if x[2]]        # sessions win over the lifetime total
+            n = len(rows)
+            if store in ("minecraft", "bottles") or (store == "steam" and rows[0][2]):       # rows are sessions, so they add up
+                secs = sum(x[1] for x in rows if x[1])
+                extra = [("%d sessions" % n) if n > 1 else "", _hours(secs) if secs >= 60 else ""]
+                tail = " (%s)" % ", ".join(e for e in extra if e) if any(extra) else ""
+                out.append(Fact(date, min(x[0] for x in rows), "%s: %s %s%s" % (
+                    label[store], "ran" if store == "bottles" else "played", name, tail), "games"))
+                continue
+            total = rows[-1][1]
+            tail = (" (%s in total)" % _hours(total)) if total else ""
+            verb = "opened" if name == "Epic Games Launcher" else "played"
+            out.append(Fact(date, min(x[0] for x in rows), "%s: %s %s%s%s" % (
+                label.get(store, "Game"), verb, name, " x%d" % n if n > 1 else "", tail), "games"))
     return out
 
 
@@ -2982,7 +3147,7 @@ ADAPTERS = [a_erste, a_brac, a_git, a_jellyfin, a_simkl, a_saves, a_worklog,
             a_takeout, a_instagram, a_facebook, a_discord, a_snapchat, a_xiaomi_dashboard, a_xiaomi_fitness, a_commute,
             a_wakatime, a_boots, a_mail, a_files,
             a_arr, a_navidrome, a_mal, a_github, a_torrents, a_games,
-            a_grades]
+            a_grades, a_logins, a_dnf, a_crashes, a_shell]
 
 # --------------------------------------------------------------------------
 # month file rendering
@@ -3208,9 +3373,11 @@ def write_month(ym, byday, apply):
 # at a parent bullet's arbitrary time. They are consolidated across services.
 DAY_SUMMARIES = ("wakatime", "xiaomi_dashboard", "xiaomi_fitness")
 ARTEFACT_GROUPS = ("docs", "files", "torrents", "immich", "navidrome", "lastfm")
+MUSIC_SOURCES = ("lastfm", "navidrome")
 CLOCK_IN_TEXT = ("commute", "worklog")
 CLOCK = re.compile(r"\b([0-2]\d:[0-5]\d)\b")
-ACTIVITY_SOURCES = ("facebook", "instagram", "discord", "snapchat", "takeout", "lastfm")
+ACTIVITY_SOURCES = ("facebook", "instagram", "discord", "snapchat", "takeout", "lastfm",
+                    "navidrome")
 PLATFORM_NAMES = {"facebook": "Messenger", "instagram": "Instagram",
                   "discord": "Discord", "snapchat": "Snapchat"}
 
@@ -3282,7 +3449,7 @@ def render_activity(groups, numbers):
             elif kind == "watched":
                 line += " (YouTube)"
             elif kind == "listened":
-                line += " (Last.fm)" if src == "lastfm" else ""
+                line += {"lastfm": " (Last.fm)", "navidrome": " (Navidrome)"}.get(src, "")
             children.append((line, src))
         children.sort(key=lambda row: (row[0][:5], row[0]))
         lines.append("- %s%s" % (heads[kind], refs(sources, numbers)))
@@ -3290,22 +3457,44 @@ def render_activity(groups, numbers):
     return lines
 
 
+COLLAPSE_AT = 4
+
+
+def collapse(facts):
+    """Identical timed one-liners from one source become a single line with a
+    count and the span, so fifty Instagram posts do not own the day."""
+    groups = defaultdict(list)
+    for f in facts:
+        if f.time and "\n" not in f.text:
+            groups[(f.src, f.text)].append(f)
+    done, out = set(), []
+    for f in facts:
+        g = groups.get((f.src, f.text)) if f.time and "\n" not in f.text else None
+        if not g or len(g) < COLLAPSE_AT:
+            out.append(f)
+        elif (f.src, f.text) not in done:
+            done.add((f.src, f.text))
+            times = sorted(x.time for x in g)
+            out.append(Fact(f.date, times[0], "%s x%d (to %s)" % (f.text, len(g), times[-1]), f.src))
+    return out
+
+
 def render_day(facts, numbers):
     """Render a day without letting untimed lists split the timeline."""
     summaries, timed, untimed, artefacts = [], [], [], []
     activity = defaultdict(list)
-    for f in facts:
+    for f in collapse(facts):
         if f.src in DAY_SUMMARIES:
             summaries.append(f)
             continue
         if f.src in ARTEFACT_GROUPS:
             # Last.fm belongs with YouTube music below; the other archive lists
             # keep their established order at the end of a day.
-            part = activity_parts(f) if f.src == "lastfm" else None
+            part = activity_parts(f) if f.src in MUSIC_SOURCES else None
             if part:
                 kind, rows = part
                 activity[kind].extend((line, f.src) for line in rows)
-            elif f.src == "lastfm":
+            elif f.src in MUSIC_SOURCES:
                 # A one-track day is deliberately a flat Fact in the adapter.
                 # It still belongs in the combined listening list, not beneath
                 # the archive artefacts just because it lacks a child bullet.
@@ -3358,6 +3547,16 @@ def day_order(f):
     return (1, 0, "", f.src, f.text)          # nothing dates it; after the clock
 
 
+def track_journal(label):
+    """Commit the journal directory to its own git repository (created on first
+    use). Local only: nothing is ever pushed."""
+    ignore = os.path.join(BASE, ".gitignore")
+    if not os.path.exists(ignore):
+        open(ignore, "w", encoding="utf-8").write("*.log\n__pycache__/\n")
+    print("journal git: %s" % ("committed " + label if oslog.git_commit(BASE, "journal: " + label)
+                               else "no changes (%s)" % label))
+
+
 def run(config, *, apply: bool, only: list[str] | None = None, force: bool = False) -> None:
     """Compile one configured journal. Writing requires an explicit flag."""
     configure(config)
@@ -3369,6 +3568,8 @@ def run(config, *, apply: bool, only: list[str] | None = None, force: bool = Fal
               "  write everything, or add --force if losing the rest is what you want."
               % ", ".join(only))
         sys.exit(2)
+    if apply and OS_LOG_DIR:
+        print("oslog harvest: %s" % oslog.harvest(OS_LOG_DIR, HOME, CRASH_IGNORE))
     facts = []
     for fn in ADAPTERS:
         key = fn.__name__[2:]
@@ -3389,5 +3590,11 @@ def run(config, *, apply: bool, only: list[str] | None = None, force: bool = Fal
         bymonth.setdefault(os.path.basename(p)[:7], defaultdict(list))
     print("\n%d months, %d facts total%s\n" % (
         len(bymonth), len(facts), "" if apply else "  (dry run, nothing written)"))
+    if apply:
+        # Snapshot first, so anything typed into a Manual section since the last
+        # run is in history before the fences are rebuilt around it.
+        track_journal("snapshot before regenerate")
     for ym in sorted(bymonth):
         write_month(ym, bymonth[ym], apply)
+    if apply:
+        track_journal("regenerate auto blocks")
