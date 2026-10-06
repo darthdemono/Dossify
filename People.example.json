@@ -1,10 +1,14 @@
 {
   "Example Person": {
-    "instagram": [
-      {"handle": "example_handle", "display": "Example Display Name"}
-    ],
+    "instagram_names": ["Example Display Name"],
+    "instagram_usernames": ["example_handle"],
     "facebook_names": ["Example Person"],
+    "facebook_usernames": ["example.person"],
     "nextcloud_uids": [],
-    "immich_person_ids": []
+    "nextcloud_names": ["Example Person"],
+    "immich_person_ids": [],
+    "birthday": null,
+    "discord_usernames": ["example.person"],
+    "snapchat_usernames": ["example_person"]
   }
 }
