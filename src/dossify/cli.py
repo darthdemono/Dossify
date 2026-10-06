@@ -35,6 +35,10 @@ def parser() -> argparse.ArgumentParser:
     journal.add_argument(
         "--force", action="store_true", help="allow a subset of adapters to write"
     )
+    oslog_cmd = subcommands.add_parser(
+        "oslog", help="harvest OS records into the durable log directory and commit them"
+    )
+    oslog_cmd.add_argument("config", type=Path)
     ingest = subcommands.add_parser(
         "ingest", help="inspect or safely ingest provider export archives"
     )
@@ -53,6 +57,13 @@ def parser() -> argparse.ArgumentParser:
     migrate.add_argument(
         "--demote-h3", action="store_true", help="demote existing level-three headings"
     )
+    sync = subcommands.add_parser(
+        "sync", help="reconcile exact-name People, Nextcloud, and Immich records"
+    )
+    sync.add_argument("config", type=Path)
+    sync.add_argument("--apply", action="store_true", help="write the reviewed reconciliation")
+    sync.add_argument("--snapshot-dir", type=Path, help="save private before-state snapshots")
+    sync.add_argument("--report", type=Path, help="write the private JSON reconciliation report")
     subcommands.add_parser(
         "providers", help="print the built-in provider capability manifest"
     )
@@ -148,6 +159,14 @@ def main() -> None:
 
         run(config, apply=args.apply, only=args.adapters, force=args.force)
         return
+    if args.command == "oslog":
+        from dossify import journal
+
+        journal.configure(config)
+        if not journal.OS_LOG_DIR:
+            raise SystemExit("set paths.os_log_dir in the journal rules file")
+        print(journal.oslog.harvest(journal.OS_LOG_DIR, journal.HOME, journal.CRASH_IGNORE))
+        return
     if args.command == "ingest":
         from dossify.ingest import run
 
@@ -157,6 +176,11 @@ def main() -> None:
         from dossify.migrate import run
 
         run(config, args.months, apply=args.apply, demote_h3=args.demote_h3)
+        return
+    if args.command == "sync":
+        from dossify.sync import run
+
+        run(config, apply=args.apply, snapshot_dir=args.snapshot_dir, report=args.report)
         return
     if args.command == "plan":
         plans = [
