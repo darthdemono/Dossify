@@ -16,10 +16,16 @@
       "properties": {
         "instagram": {
           "type": "array",
-          "description": "Each handle and display value belongs to the same Instagram account.",
+          "description": "Legacy paired Instagram records. New maps should use instagram_names and instagram_usernames.",
           "items": {
             "$ref": "#/$defs/instagramIdentity"
           }
+        },
+        "instagram_names": {
+          "$ref": "#/$defs/stringList"
+        },
+        "instagram_usernames": {
+          "$ref": "#/$defs/stringList"
         },
         "facebook_names": {
           "$ref": "#/$defs/stringList"
@@ -30,7 +36,20 @@
         "nextcloud_uids": {
           "$ref": "#/$defs/stringList"
         },
+        "nextcloud_names": {
+          "$ref": "#/$defs/stringList"
+        },
         "immich_person_ids": {
+          "$ref": "#/$defs/stringList"
+        },
+        "birthday": {
+          "type": ["string", "null"],
+          "description": "Shared ISO calendar date (YYYY-MM-DD) reconciled from exact-name Nextcloud and Immich records."
+        },
+        "discord_usernames": {
+          "$ref": "#/$defs/stringList"
+        },
+        "snapchat_usernames": {
           "$ref": "#/$defs/stringList"
         }
       },
