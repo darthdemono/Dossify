@@ -13,7 +13,7 @@ The repository is deliberately empty of personal data. There are no journal entr
 - Compiles configured activity into dated Markdown journal entries.
 - Keeps day-wide summaries such as coding time and step counts at the top, before chronological events.
 - Groups high-volume activity such as messages, searches, calls, listening, and documents into readable sections instead of interrupting the timeline.
-- Keeps provider identities explicit. A display name and an account handle are paired in `People.json`; one account cannot inherit another person's identity by accident.
+- Keeps provider identities explicit. `People.json` matches exact normalized identifiers only, so a typo, transliteration, reordered name, or near match cannot silently become a person.
 - Handles exports and local records across social activity, finance, development, media, photos, files, education, health, devices, travel, work, games, and homelab services.
 - Runs locally. The engine has no cloud dependency, telemetry, or built-in remote filesystem access.
 - Has a versioned evidence contract: facts retain timestamps, source locators, sensitivity, and execution provenance.
@@ -27,12 +27,12 @@ Dossify is the engine. Your private workspace is the memory. Keep the following 
 | File | Owns | Important rule |
 | --- | --- | --- |
 | `dossify.toml` | Paths, output location, enabled providers, and the names of private data files. | It is the entry point for every run. |
-| `People.json` | Canonical people and provider-specific identifiers. | It is authoritative. Dossify never guesses or writes identity mappings. |
+| `People.json` | Canonical people and provider-specific identifiers. | The journal only reads it. `dossify sync` can explicitly reconcile it with exact-name Nextcloud and Immich records. |
 | `Journal Rules.json` | Source labels, export roots, device aliases, photo ownership rules, account-specific settings, and formatting policy. | It is typed data, not Python constants. |
 
 [`People.example.json`](People.example.json), [`Journal Rules.example.json`](<Journal Rules.example.json>), and [`dossify.example.toml`](dossify.example.toml) show the public-safe shapes. [`schemas/People.schema.json`](schemas/People.schema.json) and [`schemas/Journal Rules.schema.json`](<schemas/Journal Rules.schema.json>) provide editor and validator contracts for those JSON files. Copy the examples into a private workspace and replace every example value there. Do not add your real files to this repository.
 
-`People.json` is intentionally more precise than a loose name replacement list. An Instagram entry records the handle and the display name observed for that same account. This prevents a plausible but wrong rendering where a group-chat display name is matched to somebody else's handle.
+`People.json` is intentionally more precise than a loose name replacement list. New maps use independent `instagram_names`, `instagram_usernames`, `facebook_names`, and `facebook_usernames` arrays, plus exact Nextcloud, Immich, Discord, and Snapchat identifiers. The canonical object key is the shared person name, so Immich needs only its stable person ID. Legacy paired Instagram entries remain supported read-only. Dossify normalizes Unicode presentation forms and case only, then requires an exact one-person match. It does not strip accents, trim names, reorder words, transliterate, or use fuzzy matching. An identifier that maps to more than one person remains unresolved.
 
 Dossify does not run an MCP server and does not grant a chat access to local files. It only compiles the local records that its private configuration permits.
 
@@ -47,6 +47,21 @@ uv run --directory "$HOME/Code/Dossify" dossify journal "$HOME/Documents/Private
 ```
 
 `journal` is dry-run by default. `--apply` is the deliberate write switch. If you name only a subset of adapters, Dossify refuses to write unless you also pass `--force`; a partial run must not silently erase facts from a complete generated block.
+
+### `dossify sync <config> [--snapshot-dir path] [--report path] [--apply]`
+
+Builds an exact-name plan across `People.json`, the configured Nextcloud CardDAV
+address book, and Immich people. It expands the registry to include every named
+source record and records their stable IDs. It also reconciles full birthdays
+and Facebook/Instagram usernames, but never deletes data, creates a remote
+record, or guesses a match. Unicode presentation variants and case are accepted;
+accents, spaces, word order, transliterations, and near matches are not.
+
+The command prints a plan by default. `--snapshot-dir` saves the three
+before-state inputs so the plan can be checked against a 1:1 reproduction.
+`--apply` is the only write mode, requires a snapshot directory, writes the map
+atomically, and uses CardDAV and the Immich API rather than either database.
+Conflicting full birthdays are reported and left unchanged.
 
 The private workspace can also keep a small PowerShell wrapper so everyday use stays one command:
 
