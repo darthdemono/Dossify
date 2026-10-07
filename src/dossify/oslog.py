@@ -8,8 +8,7 @@ duplicates and never forgets, and commits every change to a git repository in
 that directory. The adapters read only the log directory.
 
 Every record stores epoch seconds, never a local time string, so the files mean
-the same thing on any machine. Shell history keeps the command name only: the
-arguments are where keys and passwords live, so they are never written.
+the same thing on any machine.
 """
 
 from __future__ import annotations
@@ -25,21 +24,20 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-LOCAL = ZoneInfo("Europe/Budapest")
-FILES = ("boots", "logins", "dnf", "crashes", "games", "shell")
+LOCAL = ZoneInfo("UTC")     # set to the configured timezone by journal.configure()
+FILES = ("boots", "logins", "dnf", "crashes", "games")
 LAST_TIME = r"\w{3} \w{3}\s+\d+ \d\d:\d\d:\d\d \d{4}"
 README = """# OS logs
 
 Written by `dossify journal --apply` and `dossify oslog`. One JSONL file per source,
 sorted, one record per line, merged by key so re-running never duplicates.
-Times are epoch seconds. Shell history keeps command names only, never arguments.
+Times are epoch seconds.
 
 boots.jsonl   on, off, end (down|crash|running), kernel   from wtmp (`last -x`)
 logins.jsonl  user, tty, start, end                       from wtmp
 dnf.jsonl     id, ts, cmd, n                              from `dnf history list`
 crashes.jsonl ts, exe, sig, pid                           from `coredumpctl`
 games.jsonl   store, instance, name, ts, played_s         from FreesmLauncher and PrismLauncher (+ their game logs), Modrinth App, Steam, Heroic, Lutris, Bottles, Epic launcher logs
-shell.jsonl   ts, cmd                                     from timestamped ~/.bash_history
 """
 
 
@@ -402,38 +400,6 @@ def heroic(home: str, known: dict[str, str]) -> list[dict]:
     return out
 
 
-def shell_command(line: str) -> str:
-    """The command name alone. Arguments, assignments and long blobs are dropped
-    because that is where tokens and passwords sit."""
-    words = line.split()
-    while words and (words[0] == "sudo" or "=" in words[0]):
-        words = words[1:]
-    name = os.path.basename(words[0]) if words else ""
-    if not re.fullmatch(r"[A-Za-z][\w.+-]{0,24}", name):
-        return ""
-    return name
-
-
-def shell(home: str) -> list[dict]:
-    """Bash only records a time when HISTTIMEFORMAT is set, as `#epoch` lines;
-    without them there is no date to place a command on."""
-    path = os.path.join(home, ".bash_history")
-    out, ts, n = [], None, 0
-    try:
-        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-    except OSError:
-        return out
-    for line in lines:
-        if re.fullmatch(r"#\d{9,}", line):
-            ts, n = int(line[1:]), 0
-        elif ts:
-            cmd = shell_command(line)
-            if cmd:
-                out.append({"ts": ts, "n": n, "cmd": cmd})
-            n += 1
-    return out
-
-
 def git_commit(logdir: str, message: str) -> bool:
     def git(*a):
         return subprocess.run(["git", "-C", logdir, "-c", "user.name=dossify",
@@ -464,7 +430,6 @@ def harvest(logdir: str, home: str, crash_ignore: list[str] | None = None) -> di
                        + lutris(home) + bottles(home) + epic_launcher(home),
                        lambda r: (r["instance"], r["ts"]), "ts",
                        drop=lambda r: "store" not in r),     # pre-store Minecraft rows
-        "shell": merge(logdir, "shell", shell(home), lambda r: (r["ts"], r["n"]), "ts"),
     }
     summary = ", ".join("%s +%d" % kv for kv in added.items() if kv[1])
     if summary:

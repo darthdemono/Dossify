@@ -67,9 +67,10 @@ def from_typed(fact: Fact, fact_type):
         # Day facts are anchored at UTC midnight; converting would shift the date.
         return fact_type(fact.observed_at.astimezone(UTC).strftime("%Y-%m-%d"), None,
                          fact.display or fact.event_type, fact.provider_id)
-    local = fact.observed_at.astimezone()
-    return fact_type(local.strftime("%Y-%m-%d"), local.strftime("%H:%M"),
-                     fact.display or fact.event_type, fact.provider_id)
+    from dossify import journal
+
+    day, clock = journal.local_of(fact.observed_at)       # the configured timezone, history included
+    return fact_type(day, clock, fact.display or fact.event_type, fact.provider_id)
 
 
 class LegacyJournalAdapter:

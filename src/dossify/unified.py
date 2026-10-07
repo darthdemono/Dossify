@@ -8,13 +8,16 @@ a typed twin for hashing and indexing.
 
 from __future__ import annotations
 
+import json
 import time as _time
 
 from dossify import ledger
 from dossify import external
 from dossify.builtin_adapters import P0_ADAPTERS
 from dossify.http_adapter import P1_ADAPTERS
-from dossify.legacy_adapters import LegacyConfig, from_typed, to_typed, wrap_all  # noqa: F401
+from dossify.integrations import OPTIONAL_ADAPTERS
+from dossify.legacy_adapters import LegacyConfig, LegacyJournalAdapter, from_typed, to_typed, wrap_all  # noqa: F401
+from dossify.sources import registry
 
 LEGACY_CONFIG = LegacyConfig()
 from dossify.pipeline import build_plan, execute_plan
@@ -23,9 +26,10 @@ from dossify.providers import PROVIDER_SOURCE, TYPED_REPLACEMENT
 
 def adapter_table(config) -> dict:
     """Built-in typed adapters plus the owner's allowlisted external ones."""
-    table = {**P0_ADAPTERS, **P1_ADAPTERS}
-    if config.adapters.external:
-        table.update(external.load(config.adapters.external))
+    table = {**P0_ADAPTERS, **P1_ADAPTERS, **OPTIONAL_ADAPTERS}
+    table.update(external.load_configured(config))        # installed plugins the config asks for
+    custom, _errors = external.discover_custom(external.custom_dir(config))
+    table.update(custom)                      # the owner's own plugins, auto-wired
     return table
 
 
@@ -46,6 +50,16 @@ def selected_p0(config, requested: list[str]):
     return selected
 
 
+def _bound(module, fn, options):
+    """A reader that first hands its module the provider's own options."""
+    def run():
+        module._O = options
+        journal_module = __import__("dossify.journal", fromlist=["x"])
+        journal_module.CACHE_SALT = json.dumps(options, sort_keys=True, default=str)
+        return fn()
+    return run
+
+
 def collect(config, journal, only: list[str] | None = None):
     """Run every selected source; return ``(facts, outcomes, typed_facts)``.
 
@@ -55,13 +69,23 @@ def collect(config, journal, only: list[str] | None = None):
     imports it at load time.
     """
     only = only or []
+    journal.DAY_SUMMARIES = list(journal.DAY_SUMMARY_BASE)
     facts, outcomes, typed_facts = [], [], []
+    for name, message in external.discover_custom(external.custom_dir(config))[1].items():
+        outcomes.append(ledger.Outcome(f"custom/{name}", "failed", error=message))
+        print("custom plugin %-12s FAILED %s" % (name, message))
     typed_enabled = {}
     for name, adapter, typed in selected_p0(config, []):
         typed_enabled[name] = (adapter, typed)
     replaced = {legacy for legacy, p0 in TYPED_REPLACEMENT.items() if p0 in typed_enabled}
 
-    wrappers = wrap_all(journal)
+    wrappers = {}
+    for key, (module, fn) in registry.readers().items():
+        block = config.providers.get(key)
+        if block is None or not block.get("enabled", True):
+            continue
+        wrappers[key] = LegacyJournalAdapter(key, _bound(module, fn, block))
+    wrappers.update(wrap_all(journal))                 # extra always-on readers (tests, embedders)
     for key, wrapper in wrappers.items():
         if only and key not in only:
             outcomes.append(ledger.Outcome(key, "not_selected"))
@@ -93,6 +117,9 @@ def collect(config, journal, only: list[str] | None = None):
             print("source %-9s FAILED %s" % (name, outcomes[-1].error))
             continue
         typed_facts += list(result.facts)
+        for fact in result.facts:                       # a daily total leads its day, like coding time
+            if fact.values.get("summary") and name not in journal.DAY_SUMMARIES:
+                journal.DAY_SUMMARIES.append(name)
         got = [from_typed(f, journal.Fact) for f in result.facts if f.values.get("render") is not False]
         got = [f._replace(src=PROVIDER_SOURCE.get(f.src, f.src)) for f in got]
         journal.SOURCES.setdefault(name, f"{adapter.manifest.display_name} (typed adapter export)")

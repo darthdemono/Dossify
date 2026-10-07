@@ -8,12 +8,13 @@ from pathlib import Path
 from dossify.adapter_api import AdapterManifest, AdapterResult, ExecutionPlan
 from dossify.builtin_adapters import P0_ADAPTERS
 from dossify.http_adapter import P1_ADAPTERS
+from dossify.integrations import OPTIONAL_ADAPTERS
 
 SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
 
 def adapter_config_schema(provider_id: str) -> dict[str, object]:
-    adapter = {**P0_ADAPTERS, **P1_ADAPTERS}[provider_id]
+    adapter = {**P0_ADAPTERS, **P1_ADAPTERS, **OPTIONAL_ADAPTERS}[provider_id]
     schema = adapter.config_model.model_json_schema()
     schema["$schema"] = SCHEMA_DIALECT
     schema["$id"] = adapter.manifest.config_schema_id
@@ -32,7 +33,7 @@ def public_schemas() -> dict[str, dict[str, object]]:
     schemas.update(
         {
             f"adapters/{provider_id}.json": adapter_config_schema(provider_id)
-            for provider_id in (*P0_ADAPTERS, *P1_ADAPTERS)
+            for provider_id in (*P0_ADAPTERS, *P1_ADAPTERS, *OPTIONAL_ADAPTERS)
         }
     )
     return schemas

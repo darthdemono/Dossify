@@ -1,13 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Dossify private JSON document",
-  "description": "Use the file-specific schema when an editor supports it. This catalog accepts either private Dossify JSON document shape.",
+  "description": "Use the file-specific schema when an editor supports it.",
   "oneOf": [
     {
       "$ref": "People.schema.json"
-    },
-    {
-      "$ref": "Journal Rules.schema.json"
     }
   ]
 }

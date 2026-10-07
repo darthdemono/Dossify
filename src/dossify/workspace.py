@@ -13,8 +13,8 @@ from dossify.dossier import build
 from dossify.providers import MATURITY, provider_manifest
 
 STARTER = '''# Private Dossify configuration. Keep this and everything beside it out of git.
-people_file = "People.json"
 output_dir = "Journal"
+# timezone = "Europe/London"        # IANA name; the default is this machine's own
 
 [output]
 # digest | journal | chronicle shape month files; dossier | casefile | monograph compile reports.
@@ -24,16 +24,22 @@ profile = "journal"
 # minimal | balanced | forensic. Delete this block for no restriction.
 preset = "balanced"
 
-[journal]
-workspace_root = "."
-rules_file = "Journal Rules.json"
+# Nothing runs until you switch it on. Pick the sources you really have, for example:
+# [providers.git]
+# roots = ["~/Code"]
+#
+# [providers.bank_statements]
+# sources = ["~/Documents/statements"]
+#
+# [providers.instagram]
+# export = "~/Exports/instagram"    # the unzipped data download, see the README
 '''
 
 
 def init(target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     made = []
-    for name, body in (("dossify.toml", STARTER), ("People.json", "{}\n"), ("Journal Rules.json", "{}\n")):
+    for name, body in (("dossify.toml", STARTER), ("People.json", "{}\n")):
         path = target / name
         if path.exists():
             print(f"kept   {path}")
@@ -43,7 +49,7 @@ def init(target: Path) -> None:
     (target / "Journal").mkdir(exist_ok=True)
     (target / ".gitignore").write_text(
         (target / ".gitignore").read_text() if (target / ".gitignore").exists()
-        else "dossify.toml\nPeople.json\nJournal Rules.json\nJournal/\n", encoding="utf-8")
+        else "dossify.toml\nPeople.json\nJournal/\ncustom/\n", encoding="utf-8")
     print(f"created {', '.join(made) or 'nothing new'} in {target}; next: dossify doctor {target / 'dossify.toml'}")
 
 
@@ -57,9 +63,10 @@ def doctor(config, config_path: Path) -> int:
 
     check(sys.version_info >= (3, 13), f"python {sys.version_info.major}.{sys.version_info.minor}", "needs 3.13+")
     check(bool(config.output_dir and config.output_dir.is_dir()), "output_dir exists", "create it or fix output_dir")
-    check(bool(config.people_file and config.people_file.is_file()), "people_file exists", "create People.json")
-    check(bool(config.journal.rules_file and config.journal.rules_file.is_file()), "rules_file exists", "create Journal Rules.json")
-    check(bool(config.journal.workspace_root and config.journal.workspace_root.is_dir()), "workspace_root exists")
+    if config.people_file:
+        check(config.people_file.is_file(), "people_file exists", "create People.json")
+    if config.journal.workspace_root:
+        check(config.journal.workspace_root.is_dir(), "workspace_root exists")
     root = workflow.ledger_root(config)
     check(os.access(root if root.exists() else root.parent if root.parent.exists() else Path.home(), os.W_OK),
           f"ledger directory writable ({root})", "set ledger_dir")
@@ -82,8 +89,20 @@ def doctor(config, config_path: Path) -> int:
             check(env in os.environ, f"credential variable {env} is set", "export it before dossify sync")
     from dossify.unified import selected_p0
 
-    for name, _adapter, typed in selected_p0(config, []):
-        check(Path(typed.source).exists(), f"typed adapter {name}: source exists", "fix source path")
+    for name, adapter, typed in selected_p0(config, []):
+        for ok, label, hint in (adapter.diagnose(typed) if hasattr(adapter, "diagnose") else []):
+            check(ok, f"{name}: {label}", hint)
+        source = getattr(typed, "source", None)
+        if source is not None:
+            check(Path(source).expanduser().exists(), f"typed adapter {name}: source exists", "fix source path")
+    from dossify import external
+
+    folder = external.custom_dir(config)
+    found, errors = external.discover_custom(folder)
+    if folder:
+        print(f"ok    custom plugins: {len(found)} wired from {folder}")
+    for name, message in errors.items():
+        check(False, f"custom plugin {name} loads", message)
     counts: dict[str, int] = {}
     for p in provider_manifest():
         counts[p["maturity"]] = counts.get(p["maturity"], 0) + 1

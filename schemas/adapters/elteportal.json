@@ -1,17 +1,27 @@
 {
-  "$id": "https://dossify.dev/schemas/adapters/hyperos-dashboard-export/1.0.json",
+  "$id": "https://dossify.dev/schemas/adapters/elteportal-journal/1.0.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The exporter's CSV carries no device facts, so the owner may record them here.",
   "properties": {
+    "canvas": {
+      "default": true,
+      "title": "Canvas",
+      "type": "boolean"
+    },
     "enabled": {
       "default": true,
       "title": "Enabled",
       "type": "boolean"
     },
-    "exporter_version": {
+    "grades": {
+      "default": true,
+      "title": "Grades",
+      "type": "boolean"
+    },
+    "neptun_ics": {
       "anyOf": [
         {
+          "format": "path",
           "type": "string"
         },
         {
@@ -19,11 +29,12 @@
         }
       ],
       "default": null,
-      "title": "Exporter Version"
+      "title": "Neptun Ics"
     },
-    "hyperos_version": {
+    "profile": {
       "anyOf": [
         {
+          "format": "path",
           "type": "string"
         },
         {
@@ -31,11 +42,12 @@
         }
       ],
       "default": null,
-      "title": "Hyperos Version"
+      "title": "Profile"
     },
-    "phone_model": {
+    "settings": {
       "anyOf": [
         {
+          "format": "path",
           "type": "string"
         },
         {
@@ -43,17 +55,9 @@
         }
       ],
       "default": null,
-      "title": "Phone Model"
-    },
-    "source": {
-      "format": "path",
-      "title": "Source",
-      "type": "string"
+      "title": "Settings"
     }
   },
-  "required": [
-    "source"
-  ],
-  "title": "HyperOSConfig",
+  "title": "ElteConfig",
   "type": "object"
 }

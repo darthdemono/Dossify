@@ -5,7 +5,7 @@ journal_auto.py can rewrite in place.
 
 Dry run by default. --apply to write.
 """
-import re, sys, os
+import re, os
 
 BASE = ""
 DAY = re.compile(r'^## (\d{4}-\d{2}-\d{2})\s*$')

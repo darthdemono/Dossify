@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import csv
 import json
-import re
 import xml.etree.ElementTree as element_tree
 from collections import Counter
 from datetime import UTC, datetime, time
@@ -506,145 +505,12 @@ class HealthArchiveAdapter(LocalExportAdapter):
         return self.result(facts, plan, fingerprints)
 
 
-class HyperOSConfig(ExportConfig):
-    """The exporter's CSV carries no device facts, so the owner may record them here."""
-
-    phone_model: str | None = None
-    hyperos_version: str | None = None
-    exporter_version: str | None = None
-
-
-_DURATION = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
-_DISTANCE = re.compile(r"^(\d+(?:\.\d+)?)\s*(km|m)$", re.I)
-_CALORIES = re.compile(r"^(\d+(?:\.\d+)?)\s*kcal$", re.I)
-HYPEROS_COLUMNS = ["date", "steps", "duration", "distance", "calories"]
-
-
-def _dashboard_row(row: dict[str, str]) -> tuple[str, int, int, float, float] | None:
-    """One exporter row as (date, steps, seconds, metres, kcal), or None if malformed."""
-    try:
-        date = datetime.fromisoformat(row["date"]).date().isoformat()
-        steps = int(row["steps"])
-        duration = _DURATION.match(row["duration"].strip().lower().replace(" ", ""))
-        distance = _DISTANCE.match(row["distance"].strip())
-        calories = _CALORIES.match(row["calories"].strip())
-    except (KeyError, ValueError, AttributeError):
-        return None
-    if steps < 0 or not (duration and distance and calories) or not row["duration"].strip():
-        return None
-    h, m, s = (int(g or 0) for g in duration.groups())
-    metres = float(distance.group(1)) * (1000 if distance.group(2).lower() == "km" else 1)
-    return date, steps, h * 3600 + m * 60 + s, metres, float(calories.group(1))
-
-
-class HyperOSDashboardAdapter(LocalExportAdapter):
-    """Daily Steps history exported from the HyperOS Dashboard widget.
-
-    One row becomes four separate measurements.  Calories are a vendor estimate,
-    never a medical measurement, and these steps are never added to Mi Fitness or
-    any other step source: they may come from the same sensors.
-    """
-
-    config_model = HyperOSConfig
-    file_reason = "HyperOS Dashboard history export"
-    manifest = AdapterManifest(
-        provider_id="hyperos_dashboard",
-        adapter_id="hyperos_dashboard_export",
-        display_name="HyperOS Dashboard history export",
-        adapter_version="1.0.0",
-        adapter_api_min="1.0",
-        adapter_api_max="1.0",
-        config_schema_version="1.0",
-        config_schema_id="https://dossify.dev/schemas/adapters/hyperos-dashboard-export/1.0.json",
-        capabilities=("facts.read", "export.read"),
-        requested_permissions=("filesystem.read",),
-        deterministic_output=True,
-    )
-
-    def source_files(self, config: ExportConfig) -> tuple[Path, ...]:
-        source = config.source.expanduser()
-        if source.is_dir():
-            return tuple(sorted(source.glob("*dashboard-history*.csv")))
-        return (source,) if source.is_file() else ()
-
-    def execute(
-        self,
-        config: BaseModel,
-        plan: ExecutionPlan,
-        fingerprints: tuple[InputFingerprint, ...],
-    ) -> AdapterResult:
-        typed = self.config_model.model_validate(config)
-        facts: list[Fact] = []
-        dates: set[str] = set()
-        bad = 0
-        warnings: list[str] = []
-        for item in plan.reads:
-            try:
-                with Path(item.locator).open(encoding="utf-8-sig", newline="") as handle:
-                    reader = csv.DictReader(handle)
-                    if reader.fieldnames != HYPEROS_COLUMNS:
-                        warnings.append(f"{Path(item.locator).name}: unexpected columns {reader.fieldnames}")
-                        continue
-                    rows = list(reader)
-            except OSError:
-                continue
-            for raw in rows:
-                parsed = _dashboard_row(raw)
-                if not parsed:
-                    bad += 1
-                    continue
-                day, steps, seconds, metres, kcal = parsed
-                if day in dates:
-                    continue
-                dates.add(day)
-                observed = _day(day)
-                assert observed
-                common = {
-                    "provider_id": "hyperos_dashboard", "adapter_id": "hyperos_dashboard_export",
-                    "source_locator": item.locator, "observed_at": observed, "time_precision": "day",
-                    "sensitivity": Sensitivity.SENSITIVE, "retention": "archive",
-                }
-                facts += [
-                    Fact(**common, source_record_id=f"steps:{day}", event_type="health.steps.daily",
-                         values={"steps": steps, "original": raw["steps"]},
-                         display="HyperOS Dashboard: %s steps (%d min; %.2f km; %d kcal vendor estimate)"
-                         % (format(steps, ","), round(seconds / 60), metres / 1000, round(kcal))),
-                    Fact(**common, source_record_id=f"walking_duration:{day}",
-                         event_type="health.walking_duration.daily",
-                         values={"seconds": seconds, "original": raw["duration"], "render": False}),
-                    Fact(**common, source_record_id=f"walking_distance:{day}",
-                         event_type="health.walking_distance.daily",
-                         values={"metres": metres, "original": raw["distance"], "render": False}),
-                    Fact(**common, source_record_id=f"calories:{day}",
-                         event_type="health.active_calories_estimated.daily",
-                         values={"kcal": kcal, "original": raw["calories"], "estimate": "vendor",
-                                 "render": False}),
-                ]
-        if bad:
-            warnings.append(f"{bad} malformed row(s) skipped")
-        result = self.result(facts, plan, fingerprints, tuple(warnings))
-        if dates:
-            ordered = sorted(datetime.fromisoformat(d).date() for d in dates)
-            continuous = (ordered[-1] - ordered[0]).days + 1 == len(ordered)
-            device = ", ".join(f"{k}={v}" for k, v in (
-                ("phone", typed.phone_model), ("hyperos", typed.hyperos_version),
-                ("exporter", typed.exporter_version)) if v) or "device not recorded"
-            coverage = result.provenance.coverage.model_copy(update={
-                "complete": continuous and not bad and not warnings,
-                "note": f"{len(ordered)} days {ordered[0]} to {ordered[-1]}; "
-                        f"{'continuous' if continuous else 'has missing days'}; {device}"})
-            result = result.model_copy(update={
-                "provenance": result.provenance.model_copy(update={"coverage": coverage})})
-        return result
-
-
 P0_ADAPTERS: dict[str, LocalExportAdapter] = {
     "activitywatch": ActivityWatchAdapter(),
     "nextcloud": NextcloudAdapter(),
     "immich": ImmichAdapter(),
     "google_takeout": GoogleTakeoutAdapter(),
     "health_archive": HealthArchiveAdapter(),
-    "hyperos_dashboard": HyperOSDashboardAdapter(),
 }
 
 

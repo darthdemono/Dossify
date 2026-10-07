@@ -12,6 +12,10 @@ dependencies = [
     "dossify-adapter-api",
 ]
 
+[project.optional-dependencies]
+# Niche, optional integrations: nothing here is needed by the core.
+elte = ["elteportal @ git+https://github.com/darthdemono/EltePortal"]
+
 [tool.uv.sources]
 dossify-adapter-api = { workspace = true }
 

@@ -39,6 +39,11 @@ dependencies = [
     { name = "pydantic" },
 ]
 
+[package.optional-dependencies]
+elte = [
+    { name = "elteportal" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -49,8 +54,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dossify-adapter-api", editable = "packages/dossify-adapter-api" },
+    { name = "elteportal", marker = "extra == 'elte'", git = "https://github.com/darthdemono/EltePortal" },
     { name = "pydantic", specifier = ">=2.13.5" },
 ]
+provides-extras = ["elte"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -69,6 +76,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.13.5" }]
+
+[[package]]
+name = "elteportal"
+version = "1.0.0"
+source = { git = "https://github.com/darthdemono/EltePortal#e5867186e09136b7a42c5f76f90a6a392b3b7a53" }
 
 [[package]]
 name = "iniconfig"

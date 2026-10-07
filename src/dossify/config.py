@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,9 +22,20 @@ class JournalSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workspace_root: Path | None = None
-    rules_file: Path | None = None
     cache_dir: Path | None = None
-    elteportal_path: Path | None = None
+    os_log_dir: Path | None = None       # durable system-log store used by the boot/login/package/crash/game readers
+    group_chat_roster_max: int = 200     # larger group chats list no roster in the month file
+    group_chat_inline_max: int = 6       # most speakers named inline before "+N"
+    rules_file: Path | None = None       # retired: kept only so the error can say what to do
+
+
+class TimezoneSpan(BaseModel):
+    """Records before ``until`` are shown in ``zone`` (for someone who moved between timezones)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    until: datetime
+    zone: str
 
 
 class SyncSettings(BaseModel):
@@ -59,14 +71,26 @@ class PrivacySettings(BaseModel):
 
     preset: str | None = None
     classes: dict[str, str] = Field(default_factory=dict)
+    # Which data class an external adapter's records belong to, e.g. { my_adapter = "health" }.
+    source_classes: dict[str, str] = Field(default_factory=dict)
 
 
 class AdapterSettings(BaseModel):
-    """Third-party adapters the owner has chosen to trust, by entry-point name."""
+    """Where the owner's own plugins live.  Installed plugins need no setting: a provider block turns one on."""
 
     model_config = ConfigDict(extra="forbid")
 
-    external: list[str] = Field(default_factory=list)
+    # Folder of the owner's own plugins, auto-wired. Default: ./custom, then the checkout's custom/.
+    custom_dir: Path | None = None
+
+
+class IngestSettings(BaseModel):
+    """Where ``dossify ingest`` unpacks data-request archives.  Point each provider's ``export`` at the result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    roots: list[Path] = Field(default_factory=list)   # first existing root wins
+    default_meta_handle: str = ""
 
 
 class DossifyConfig(BaseModel):
@@ -76,11 +100,14 @@ class DossifyConfig(BaseModel):
 
     people_file: Path | None = None
     output_dir: Path | None = None
+    timezone: str | None = None          # IANA name; default is the machine's own
+    timezone_history: list[TimezoneSpan] = Field(default_factory=list)
     ledger_dir: Path | None = None
     claims_file: Path | None = None
     output: OutputSettings = Field(default_factory=OutputSettings)
     privacy: PrivacySettings = Field(default_factory=PrivacySettings)
     adapters: AdapterSettings = Field(default_factory=AdapterSettings)
+    ingest: IngestSettings = Field(default_factory=IngestSettings)
     oauth: dict[str, OAuthSettings] = Field(default_factory=dict)
     journal: JournalSettings = Field(default_factory=JournalSettings)
     sync: SyncSettings = Field(default_factory=SyncSettings)
@@ -92,6 +119,10 @@ def load_config(path: Path) -> DossifyConfig:
     with path.open("rb") as handle:
         raw = tomllib.load(handle)
     config = DossifyConfig.model_validate(raw)
+    if config.journal.rules_file:
+        raise ValueError(
+            "[journal] rules_file is retired: its settings now live in dossify.toml, as options on "
+            "[providers.<name>] blocks. See docs/MIGRATING.md for where each old key went.")
     base = path.parent.resolve()
     if config.people_file and not config.people_file.is_absolute():
         config.people_file = base / config.people_file
@@ -101,10 +132,12 @@ def load_config(path: Path) -> DossifyConfig:
         value = getattr(config, name)
         if value and not value.is_absolute():
             setattr(config, name, (base / value).resolve())
-    for field in ("workspace_root", "rules_file", "cache_dir", "elteportal_path"):
+    for field in ("workspace_root", "cache_dir", "os_log_dir"):
         value = getattr(config.journal, field)
         if value and not value.is_absolute():
             setattr(config.journal, field, (base / value).resolve())
+    if config.adapters.custom_dir and not config.adapters.custom_dir.is_absolute():
+        config.adapters.custom_dir = (base / config.adapters.custom_dir).resolve()
     for settings in config.oauth.values():
         if not settings.token_file.is_absolute():
             settings.token_file = (base / settings.token_file).resolve()

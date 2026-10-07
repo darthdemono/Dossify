@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Take a Google, Meta, Discord or Snapchat export from a downloaded zip to
-the place journal_auto.py expects to find it, and say what is there.
+the folder you point a provider's `export` option at, and say what is there.
 
-    python3 export_ingest.py                        # what is already in place
-    python3 export_ingest.py add ~/Downloads/*.zip  # dry run, says what it would do
-    python3 export_ingest.py add ~/Downloads/*.zip --apply
-    python3 export_ingest.py add *.zip --into ~/Exports --apply
-    python3 export_ingest.py add ~/Downloads/discord.zip --kind discord --apply
-    python3 export_ingest.py add ~/Downloads/snapchat.zip --apply
+    dossify ingest <config>                        # what is already in place
+    dossify ingest <config> add ~/Downloads/*.zip  # dry run, says what it would do
+    dossify ingest <config> add ~/Downloads/*.zip --apply
+    dossify ingest <config> add *.zip --into ~/Exports --apply
+    dossify ingest <config> add ~/Downloads/discord.zip --kind discord --apply
+    dossify ingest <config> add ~/Downloads/snapchat.zip --apply
 
 The exports are not copied into the archive. A Takeout runs to tens of
 gigabytes and carries a whole mailbox, so it lives on the big disk and only
@@ -18,27 +18,19 @@ import json, os, re, shutil, stat, sys, tempfile, zipfile
 
 HOME = os.path.expanduser("~")
 BASE = ""
-ROOTS = [os.environ.get("JOURNAL_EXPORTS"),
-         # The internal SSD comes first on purpose: the 12 TB Exos resets its
-         # SATA link mid-read and killed an extraction on 11-09-2026.
-         "/mnt/nobara-data/Exports",
-         "/mnt/wd-blue/Exports",
-         "/mnt/big_chungus/Exports",
-         os.path.join(HOME, "Exports")]
+ROOTS = [os.environ.get("JOURNAL_EXPORTS"), os.path.join(HOME, "Exports")]   # overridden by [ingest] roots
 DEFAULT_META_HANDLE = ""
 
 
 def configure(config) -> None:
-    """Read export destinations from the same private Journal Rules.json."""
+    """Read export destinations from ``[ingest]`` in dossify.toml."""
     global BASE, ROOTS, DEFAULT_META_HANDLE
-    if not config.output_dir or not config.journal.rules_file:
-        raise ValueError("dossify.toml needs output_dir and [journal].rules_file")
+    if not config.output_dir:
+        raise ValueError("dossify.toml needs output_dir")
     BASE = str(config.output_dir.resolve())
-    with config.journal.rules_file.open(encoding="utf-8") as handle:
-        rules = json.load(handle)
-    roots = list((rules.get("exports") or {}).get("roots") or [])
-    ROOTS = [root for root in roots if root] or ROOTS
-    DEFAULT_META_HANDLE = str((rules.get("accounts") or {}).get("default_meta_handle") or "")
+    roots = [str(root) for root in config.ingest.roots]
+    ROOTS = [os.path.expanduser(root) for root in roots if root] or ROOTS
+    DEFAULT_META_HANDLE = config.ingest.default_meta_handle
 
 # The files journal_auto.py actually reads, and what each one is for.
 WANTED = [

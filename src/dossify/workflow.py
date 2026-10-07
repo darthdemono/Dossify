@@ -21,6 +21,10 @@ from dossify.people import load_people
 from dossify.pipeline import digest
 
 
+def _crash_ignore(config) -> list[str]:
+    return list(config.providers.get("crashes", {}).get("ignore", []))
+
+
 def ledger_root(config) -> Path:
     return (config.ledger_dir or (config.journal.cache_dir or Path.home() / ".cache" / "dossify") / "runs")
 
@@ -50,7 +54,8 @@ def prepare(config, journal, only, profile_name) -> Evidence:
     journal.PROFILE = profile_name
     facts, outcomes, typed = unified.collect(config, journal, only)
     policy = privacy.resolve(config.privacy.preset, config.privacy.classes)
-    facts, excluded = privacy.apply(facts, policy)
+    privacy.check_source_classes(config.privacy.source_classes)
+    facts, excluded = privacy.apply(facts, policy, source_classes=config.privacy.source_classes)
     for outcome in outcomes:
         if outcome.name in excluded:
             outcome.policy = excluded[outcome.name]
@@ -78,7 +83,7 @@ def run(config, *, apply: bool, only: list[str] | None = None, force: bool = Fal
         sys.exit(2)
     if apply and journal.OS_LOG_DIR:
         print("oslog harvest: %s" % journal.oslog.harvest(
-            journal.OS_LOG_DIR, journal.HOME, journal.CRASH_IGNORE))
+            journal.OS_LOG_DIR, journal.HOME, _crash_ignore(config)))
     evidence = prepare(config, journal, only, name)
     facts, outcomes, policy = evidence
 
@@ -118,7 +123,6 @@ def run(config, *, apply: bool, only: list[str] | None = None, force: bool = Fal
         months.append({"ym": ym, "path": str(path), "sha_before": ledger.sha(before),
                        "sha_after": ledger.sha(text),
                        "action": "delete" if text is None else "create" if before is None else "update"})
-    exports = (journal.RULES.get("exports") or {})
     record.manifest.update({
         "created_at": datetime.now(UTC).isoformat(), "dossify_version": _version(),
         "mode": "reviewed", "profile": name, "privacy_preset": config.privacy.preset,
@@ -127,8 +131,8 @@ def run(config, *, apply: bool, only: list[str] | None = None, force: bool = Fal
         "timezone_assumption": {
             "legacy_dates": "machine-local calendar dates",
             "machine_timezone": str(datetime.now().astimezone().tzinfo),
-            "before_move_timezone": exports.get("before_move_timezone"),
-            "move_utc": exports.get("move_utc")},
+            "timezone": str(journal.TZ_DEFAULT),
+            "history": [{"until": until.isoformat(), "zone": str(zone)} for until, zone in journal.TZ_HISTORY]},
         "adapters": [asdict(o) for o in outcomes], "months": months,
         "review_tasks": [asdict(task) for task in evidence.tasks],
         "previous_run": previous.manifest["run_id"] if previous else None,

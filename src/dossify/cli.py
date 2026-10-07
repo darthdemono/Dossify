@@ -53,6 +53,9 @@ def parser() -> argparse.ArgumentParser:
         run_cmd.add_argument("run_id")
         if name == "apply":
             run_cmd.add_argument("--force", action="store_true", help="apply a partial-adapter run")
+    subcommands.add_parser(
+        "custom", help="list the auto-wired plugins in custom/ and whether each is switched on"
+    ).add_argument("config", type=Path)
     for name, text in (("doctor", "check paths, credentials and source readiness"),
                        ("status", "show per-source coverage from the latest recorded run"),
                        ("index", "build the disposable full-text timeline index")):
@@ -125,6 +128,7 @@ def parser() -> argparse.ArgumentParser:
         "providers", help="print the built-in provider capability manifest"
     )
     providers.add_argument("--markdown", action="store_true", help="print the README support table")
+    providers.add_argument("--options", action="store_true", help="print the per-provider options table")
     adapters = subcommands.add_parser(
         "adapters", help="list public export-first adapter manifests"
     )
@@ -187,6 +191,13 @@ def main() -> None:
         if args.markdown:
             print(provider_table())
             return
+        if args.options:
+            from dossify.sources import registry
+
+            from dossify.providers import typed_options_markdown
+
+            print(registry.options_markdown() + "\n\n### Typed adapters\n\nThese read a file or an address you give them and validate their block strictly.\n\n" + typed_options_markdown())
+            return
         for provider in provider_manifest():
             print(
                 f"{provider['name']}: {provider['category']} ({', '.join(provider['capabilities'])}) "
@@ -208,7 +219,7 @@ def main() -> None:
         found = external.available()
         for name in sorted(found):
             print(f"{name}: {found[name].value}")
-        print(f"{len(found)} external adapter(s) installed; none loads unless named under [adapters] external")
+        print(f"{len(found)} installed adapter(s); each loads only when [providers.<its name>] exists in your config")
         return
     if args.command == "adapters":
         manifests = builtin_manifests()
@@ -243,6 +254,20 @@ def main() -> None:
         else:
             print(oauth.logout(settings))
         return
+    if args.command == "custom":
+        from dossify import external
+
+        folder = external.custom_dir(config)
+        found, errors = external.discover_custom(folder)
+        print(f"custom folder: {folder or 'none found'}")
+        for name, adapter in sorted(found.items()):
+            block = config.providers.get(name)
+            state = "off (no [providers.%s] block)" % name if block is None else (
+                "on" if block.get("enabled", True) else "off (enabled = false)")
+            print(f"  {name}: {adapter.manifest.display_name} [{state}]")
+        for name, message in sorted(errors.items()):
+            print(f"  {name}: FAILED {message}")
+        raise SystemExit(1 if errors else 0)
     if args.command == "conformance":
         from dossify import conformance as conformance_checks
 
@@ -292,8 +317,9 @@ def main() -> None:
 
         journal.configure(config)
         if not journal.OS_LOG_DIR:
-            raise SystemExit("set paths.os_log_dir in the journal rules file")
-        print(journal.oslog.harvest(journal.OS_LOG_DIR, journal.HOME, journal.CRASH_IGNORE))
+            raise SystemExit("set [journal] os_log_dir in dossify.toml")
+        print(journal.oslog.harvest(journal.OS_LOG_DIR, journal.HOME,
+                                    list(config.providers.get("crashes", {}).get("ignore", []))))
         return
     if args.command == "ingest":
         from dossify.ingest import run
