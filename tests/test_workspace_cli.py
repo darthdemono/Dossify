@@ -23,8 +23,7 @@ def test_every_provider_has_a_known_support_level() -> None:
 
     assert {p["maturity"] for p in provider_manifest()} <= set(MATURITY)
     stable = {p["name"] for p in provider_manifest() if p["maturity"] == "stable_typed"}
-    assert {"activitywatch", "nextcloud", "immich", "google_takeout", "health_archive",
-            "hyperos_dashboard"} == stable
+    assert {"activitywatch", "nextcloud", "immich", "google_takeout", "health_archive", "elteportal"} == stable
 
 
 def test_init_creates_skeleton_and_keeps_existing(tmp_path: Path, capsys) -> None:
@@ -41,9 +40,9 @@ def test_doctor_passes_on_init_workspace_and_fails_on_missing(tmp_path: Path, ca
     workspace.init(tmp_path / "w")
     config = load_config(tmp_path / "w" / "dossify.toml")
     assert workspace.doctor(config, tmp_path / "w" / "dossify.toml") == 0
-    (tmp_path / "w" / "People.json").unlink()
+    (tmp_path / "w" / "Journal").rmdir()
     assert workspace.doctor(config, tmp_path / "w" / "dossify.toml") == 1
-    assert "FAIL  people_file exists" in capsys.readouterr().out
+    assert "FAIL  output_dir exists" in capsys.readouterr().out
 
 
 def test_status_reads_latest_run(tmp_path: Path, monkeypatch, capsys) -> None:

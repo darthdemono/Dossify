@@ -11,11 +11,9 @@ from dossify.journal import Fact
 def workspace(tmp_path: Path, monkeypatch, extra: str = ""):
     (tmp_path / "Journal").mkdir()
     (tmp_path / "People.json").write_text("{}")
-    (tmp_path / "Journal Rules.json").write_text(json.dumps(
-        {"source_descriptions": {"fake": "A fake source", "other": "Another"}}))
     (tmp_path / "dossify.toml").write_text(
         'people_file = "People.json"\noutput_dir = "Journal"\nledger_dir = "runs"\n' + extra +
-        '\n[journal]\nworkspace_root = "."\nrules_file = "Journal Rules.json"\ncache_dir = "cache"\n')
+        '\n[journal]\nworkspace_root = "."\ncache_dir = "cache"\n')
 
     def a_fake():
         return [Fact("2026-02-03", "09:00", "Did a thing", "fake"),

@@ -1,6 +1,7 @@
 import json
 
 from dossify import journal
+from dossify.sources import meta
 from dossify.people import (
     journal_identity,
     load_people,
@@ -93,6 +94,6 @@ def test_people_leave_colliding_identifiers_unresolved(tmp_path):
     previous_identity = journal._IDENTITY
     try:
         journal._IDENTITY = identity
-        assert journal.identity_match("by_fb_name", "Same Name") is None
+        assert meta.identity_match("by_fb_name", "Same Name") is None
     finally:
         journal._IDENTITY = previous_identity

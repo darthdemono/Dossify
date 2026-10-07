@@ -42,41 +42,10 @@ def serve(handler_body, status=200, headers=None):
     return server
 
 
-# ---- HyperOS typed adapter ------------------------------------------------
-
-def test_hyperos_emits_four_measurements_and_reports_continuity(tmp_path: Path) -> None:
-    adapter = P0_ADAPTERS["hyperos_dashboard"]
-    config = adapter.config_model(source=FIXTURES / "hyperos-dashboard-history.csv",
-                                  phone_model="TestPhone", hyperos_version="OS3")
-    result = execute_plan(adapter, config, build_plan(adapter, config), tmp_path)
-    kinds = sorted({f.event_type for f in result.facts})
-    assert kinds == ["health.active_calories_estimated.daily", "health.steps.daily",
-                     "health.walking_distance.daily", "health.walking_duration.daily"]
-    assert len(result.facts) == 12
-    by_id = {f.source_record_id: f for f in result.facts}
-    assert by_id["walking_duration:2026-10-02"].values["seconds"] == 3910
-    assert by_id["walking_distance:2026-10-01"].values["metres"] == 800
-    assert by_id["calories:2026-10-03"].values["estimate"] == "vendor"
-    cov = result.provenance.coverage
-    assert cov.complete and "continuous" in cov.note and "phone=TestPhone" in cov.note
-
-
-def test_hyperos_flags_missing_days_and_bad_columns(tmp_path: Path) -> None:
-    adapter = P0_ADAPTERS["hyperos_dashboard"]
-    gap = tmp_path / "dashboard-history.csv"
-    gap.write_text("date,steps,duration,distance,calories\n2026-10-03,1,1m,1km,1 kcal\n2026-10-01,1,1m,1km,1 kcal\n")
-    result = execute_plan(adapter, adapter.config_model(source=gap), build_plan(adapter, adapter.config_model(source=gap)))
-    assert "missing days" in result.provenance.coverage.note and not result.provenance.coverage.complete
-    wrong = tmp_path / "wrong.csv"
-    wrong.write_text("day,count\n2026-10-03,1\n")
-    result = execute_plan(adapter, adapter.config_model(source=wrong), build_plan(adapter, adapter.config_model(source=wrong)))
-    assert not result.facts and any("unexpected columns" in w for w in result.warnings)
-
-
 # ---- legacy wrapper round trip --------------------------------------------
 
 def test_legacy_fact_round_trips_exactly_including_midnight_dates() -> None:
-    for fact in (LegacyFact("2026-01-01", "23:59", "late", "git"), LegacyFact("2026-07-01", None, "day", "erste"),
+    for fact in (LegacyFact("2026-01-01", "23:59", "late", "git"), LegacyFact("2026-07-01", None, "day", "bank_statements"),
                  LegacyFact("2026-01-01", "00:00", "midnight", "claude")):
         assert from_typed(to_typed(fact), LegacyFact) == fact
 
@@ -136,7 +105,7 @@ def test_conformance_catches_a_lying_adapter(tmp_path: Path) -> None:
     assert any("different provider" in f for f in failures)
 
 
-def test_external_adapters_load_only_when_allowlisted(monkeypatch) -> None:
+def test_installed_plugins_load_only_when_a_provider_block_asks_for_them(monkeypatch) -> None:
     class FakeEntry:
         name, value = "extra", "pkg:ADAPTER"
 
@@ -152,11 +121,19 @@ def test_external_adapters_load_only_when_allowlisted(monkeypatch) -> None:
         external.load(["ghost"])
     assert external.load([]) == {}
 
+    class Config:
+        def __init__(self, providers):
+            self.providers = providers
+
+    assert external.load_configured(Config({})) == {}            # installed but not switched on
+    with pytest.raises(ValueError, match="declares provider_id"):
+        external.load_configured(Config({"extra": {}}))             # the block is the opt-in
+    assert external.load_configured(Config({"extra": {"enabled": False}})) == {}
+
 
 # ---- formats and checkpoints ----------------------------------------------
 
 def test_format_detection_names_known_exports_and_rejects_others(tmp_path: Path) -> None:
-    assert formats.detect("hyperos_dashboard", FIXTURES / "hyperos-dashboard-history.csv") == "hyperos-dashboard-csv"
     assert formats.detect("health_archive", FIXTURES / "health-steps.csv") == "steps-csv"
     junk = tmp_path / "x.csv"
     junk.write_text("nothing,useful\n")
@@ -167,15 +144,17 @@ def test_format_detection_names_known_exports_and_rejects_others(tmp_path: Path)
 
 
 def test_checkpoint_resume_emits_only_the_overlap_window(tmp_path: Path) -> None:
-    adapter = P0_ADAPTERS["hyperos_dashboard"]
-    config = adapter.config_model(source=FIXTURES / "hyperos-dashboard-history.csv")
+    adapter = P0_ADAPTERS["health_archive"]
+    export = tmp_path / "steps.csv"
+    export.write_text("Date,Steps\n2026-01-01,100\n2026-01-02,200\n2026-01-03,300\n")
+    config = adapter.config_model(source=export)
     result = execute_plan(adapter, config, build_plan(adapter, config))
-    assert checkpoints.state(checkpoints.load(tmp_path, "hyperos_dashboard"), result) == "first_run"
+    assert checkpoints.state(checkpoints.load(tmp_path, "health_archive"), result) == "first_run"
     checkpoints.save(tmp_path, result)
-    previous = checkpoints.load(tmp_path, "hyperos_dashboard")
+    previous = checkpoints.load(tmp_path, "health_archive")
     assert checkpoints.state(previous, result) == "unchanged"
     narrowed = checkpoints.since(result, previous, overlap_days=1)
-    assert {f.observed_at.date().isoformat() for f in narrowed.facts} == {"2026-10-02", "2026-10-03"}
+    assert {f.observed_at.date().isoformat() for f in narrowed.facts} == {"2026-01-02", "2026-01-03"}
     previous["inputs"] = {"somewhere": "0" * 64}
     assert checkpoints.state(previous, result) == "changed_input"
 
@@ -293,8 +272,8 @@ def test_http_json_refuses_a_redirect_to_another_host(tmp_path: Path) -> None:
 
 def test_config_accepts_adapters_and_oauth_blocks(tmp_path: Path) -> None:
     (tmp_path / "dossify.toml").write_text(
-        '[adapters]\nexternal = ["extra"]\n[oauth.svc]\nauthorize_url = "https://a/x"\ntoken_url = "https://a/t"\n'
+        '[oauth.svc]\nauthorize_url = "https://a/x"\ntoken_url = "https://a/t"\n'
         'client_id = "c"\nscopes = ["read"]\ntoken_file = "tok.json"\nallowed_hosts = ["a"]\n')
     config = load_config(tmp_path / "dossify.toml")
-    assert config.adapters.external == ["extra"] and config.oauth["svc"].token_file == tmp_path / "tok.json"
+    assert config.oauth["svc"].token_file == tmp_path / "tok.json"
     assert config.oauth["svc"].allow_network is False

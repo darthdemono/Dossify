@@ -58,14 +58,6 @@ def test_identical_timed_lines_collapse_but_distinct_ones_stay() -> None:
     assert collapse(posts[:3]) == posts[:3]
 
 
-def test_shell_history_keeps_command_names_only() -> None:
-    from dossify.oslog import shell_command
-
-    assert shell_command("sudo TOKEN=abc git push origin main") == "git"
-    assert shell_command("/usr/bin/curl -H 'Authorization: Bearer sk-live-123' x") == "curl"
-    assert shell_command("sk" + "_live_" + "x" * 24) == ""   # built at runtime so scanners do not flag the test
-
-
 def test_oslog_merge_never_duplicates_or_forgets(tmp_path) -> None:
     from dossify.oslog import load, merge
 

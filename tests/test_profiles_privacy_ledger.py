@@ -13,7 +13,7 @@ def facts():
     return [
         Fact("2026-01-01", "09:00", "Messaged someone", "instagram"),
         Fact("2026-01-01", "10:00", "Messaged again", "instagram"),
-        Fact("2026-01-01", "11:00", "Paid 500 HUF at a shop", "erste"),
+        Fact("2026-01-01", "11:00", "Paid 500 HUF at a shop", "bank_statements"),
         Fact("2026-03-05", "12:00", "Committed a change", "git"),
     ]
 
