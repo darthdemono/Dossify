@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 
+[manifest]
+members = [
+    "dossify",
+    "dossify-adapter-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -26,9 +32,10 @@ wheels = [
 
 [[package]]
 name = "dossify"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "dossify-adapter-api" },
     { name = "pydantic" },
 ]
 
@@ -40,7 +47,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.13.5" }]
+requires-dist = [
+    { name = "dossify-adapter-api", editable = "packages/dossify-adapter-api" },
+    { name = "pydantic", specifier = ">=2.13.5" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -48,6 +58,17 @@ dev = [
     { name = "ruff", specifier = ">=0.16.10" },
     { name = "ty", specifier = ">=0.0.84" },
 ]
+
+[[package]]
+name = "dossify-adapter-api"
+version = "1.0.0"
+source = { editable = "packages/dossify-adapter-api" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.13.5" }]
 
 [[package]]
 name = "iniconfig"

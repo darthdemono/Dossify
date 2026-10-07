@@ -1,12 +1,22 @@
 [project]
 name = "dossify"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first journal compiler with pluggable personal-data adapters."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Jubair Hasan (DarthDemono)" }]
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.13.5",
+    "dossify-adapter-api",
 ]
+
+[tool.uv.sources]
+dossify-adapter-api = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [project.scripts]
 dossify = "dossify.cli:main"
