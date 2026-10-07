@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from dossify.adapter_api import ExecutionPlan
-from dossify.builtin_adapters import P0_ADAPTERS, builtin_manifests
+from dossify.builtin_adapters import P0_ADAPTERS, builtin_manifests  # noqa: F401
+from dossify import checkpoints, profiles
 from dossify.config import load_config
 from dossify.pipeline import build_plan, canonical_json, execute_plan
-from dossify.providers import provider_manifest
+from dossify.providers import provider_manifest, provider_table
+from dossify.unified import selected_p0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -35,6 +38,60 @@ def parser() -> argparse.ArgumentParser:
     journal.add_argument(
         "--force", action="store_true", help="allow a subset of adapters to write"
     )
+    journal.add_argument(
+        "--review", action="store_true",
+        help="record a reviewable run in the private ledger; writes nothing",
+    )
+    journal.add_argument(
+        "--profile", choices=[p.name for p in profiles.PROFILES.values() if p.kind == "journal"],
+        help="journal depth: digest, journal, chronicle",
+    )
+    for name, text in (("apply", "write exactly what a reviewed run proposed"),
+                       ("undo", "restore the files an applied run changed")):
+        run_cmd = subcommands.add_parser(name, help=text)
+        run_cmd.add_argument("config", type=Path)
+        run_cmd.add_argument("run_id")
+        if name == "apply":
+            run_cmd.add_argument("--force", action="store_true", help="apply a partial-adapter run")
+    for name, text in (("doctor", "check paths, credentials and source readiness"),
+                       ("status", "show per-source coverage from the latest recorded run"),
+                       ("index", "build the disposable full-text timeline index")):
+        subcommands.add_parser(name, help=text).add_argument("config", type=Path)
+    search_cmd = subcommands.add_parser("search", help="full-text search the timeline index")
+    search_cmd.add_argument("config", type=Path)
+    search_cmd.add_argument("query")
+    search_cmd.add_argument("--limit", type=int, default=50)
+    for name, text in (("login", "authorize one configured read-only OAuth provider"),
+                       ("logout", "revoke and delete one provider's stored token")):
+        auth = subcommands.add_parser(name, help=text)
+        auth.add_argument("config", type=Path)
+        auth.add_argument("provider")
+    init_cmd = subcommands.add_parser("init", help="create a private workspace skeleton")
+    init_cmd.add_argument("directory", type=Path)
+    compile_cmd = subcommands.add_parser(
+        "compile", help="compile a dossier, casefile or monograph document"
+    )
+    compile_cmd.add_argument("config", type=Path)
+    compile_cmd.add_argument(
+        "--profile", default="dossier",
+        choices=[p.name for p in profiles.PROFILES.values() if p.kind == "document"],
+    )
+    compile_cmd.add_argument("--period", default="all", help="all, YYYY, or YYYY-MM")
+    compile_cmd.add_argument("--output", type=Path, help="write to this file")
+    compile_cmd.add_argument("--write", action="store_true", help="write into the output directory")
+    subcommands.add_parser("profiles", help="list the output profiles")
+    people = subcommands.add_parser("people", help="People registry commands")
+    people_commands = people.add_subparsers(dest="people_command", required=True)
+    people_commands.add_parser(
+        "claims", help="list identity claims and any contradictions"
+    ).add_argument("config", type=Path)
+    reconcile = people_commands.add_parser(
+        "reconcile", help="reconcile exact-name People, Nextcloud, and Immich records"
+    )
+    reconcile.add_argument("config", type=Path)
+    reconcile.add_argument("--apply", action="store_true")
+    reconcile.add_argument("--snapshot-dir", type=Path)
+    reconcile.add_argument("--report", type=Path)
     oslog_cmd = subcommands.add_parser(
         "oslog", help="harvest OS records into the durable log directory and commit them"
     )
@@ -64,13 +121,21 @@ def parser() -> argparse.ArgumentParser:
     sync.add_argument("--apply", action="store_true", help="write the reviewed reconciliation")
     sync.add_argument("--snapshot-dir", type=Path, help="save private before-state snapshots")
     sync.add_argument("--report", type=Path, help="write the private JSON reconciliation report")
-    subcommands.add_parser(
+    providers = subcommands.add_parser(
         "providers", help="print the built-in provider capability manifest"
     )
+    providers.add_argument("--markdown", action="store_true", help="print the README support table")
     adapters = subcommands.add_parser(
         "adapters", help="list public export-first adapter manifests"
     )
     adapters.add_argument("--json", action="store_true", help="print canonical JSON")
+    adapters.add_argument("--external", action="store_true",
+                          help="list installed third-party adapters (they load only if allowlisted)")
+    conformance = subcommands.add_parser(
+        "conformance", help="run the adapter conformance checks against a configured adapter"
+    )
+    conformance.add_argument("config", type=Path)
+    conformance.add_argument("adapter")
     plan = subcommands.add_parser(
         "plan", help="create a no-read, no-write P0 adapter execution plan"
     )
@@ -87,6 +152,11 @@ def parser() -> argparse.ArgumentParser:
     facts.add_argument("config", type=Path)
     facts.add_argument("plan", type=Path, help="plan bundle created by dossify plan")
     facts.add_argument(
+        "--since-checkpoint", action="store_true",
+        help="emit only facts after the last checkpoint minus the overlap window",
+    )
+    facts.add_argument("--overlap-days", type=int, default=3, help="days rescanned before the checkpoint")
+    facts.add_argument(
         "--output",
         type=Path,
         help="write canonical results to this file; defaults to stdout",
@@ -98,22 +168,7 @@ def parser() -> argparse.ArgumentParser:
     return command
 
 
-def _selected_p0(config, requested: list[str]):
-    names = requested or [name for name in P0_ADAPTERS if name in config.providers]
-    unknown = sorted(set(names) - set(P0_ADAPTERS))
-    if unknown:
-        raise ValueError(f"not an export-first P0 adapter: {', '.join(unknown)}")
-    selected = []
-    for name in names:
-        values = config.providers.get(name)
-        if values is None:
-            raise ValueError(
-                f'{name} needs a [providers.{name}] block with source = "..."'
-            )
-        typed = P0_ADAPTERS[name].config_model.model_validate(values)
-        if typed.enabled:
-            selected.append((name, P0_ADAPTERS[name], typed))
-    return selected
+_selected_p0 = selected_p0
 
 
 def _write_or_print(payload: object, output: Path | None) -> None:
@@ -129,10 +184,31 @@ def _write_or_print(payload: object, output: Path | None) -> None:
 def main() -> None:
     args = parser().parse_args()
     if args.command == "providers":
+        if args.markdown:
+            print(provider_table())
+            return
         for provider in provider_manifest():
             print(
-                f"{provider['name']}: {provider['category']} ({', '.join(provider['capabilities'])})"
+                f"{provider['name']}: {provider['category']} ({', '.join(provider['capabilities'])}) "
+                f"[{provider['maturity']}]"
             )
+        return
+    if args.command == "profiles":
+        for p in profiles.PROFILES.values():
+            print(f"{p.name:10} {p.kind:9} {p.summary}")
+        return
+    if args.command == "init":
+        from dossify.workspace import init
+
+        init(args.directory)
+        return
+    if args.command == "adapters" and args.external:
+        from dossify import external
+
+        found = external.available()
+        for name in sorted(found):
+            print(f"{name}: {found[name].value}")
+        print(f"{len(found)} external adapter(s) installed; none loads unless named under [adapters] external")
         return
     if args.command == "adapters":
         manifests = builtin_manifests()
@@ -154,10 +230,62 @@ def main() -> None:
     if args.command == "config-validate":
         print(f"valid: {args.config} (private journal configuration)")
         return
+    if args.command in ("login", "logout"):
+        from dossify import oauth
+
+        try:
+            settings = config.oauth[args.provider]
+        except KeyError:
+            raise SystemExit(f"no [oauth.{args.provider}] block in {args.config}") from None
+        if args.command == "login":
+            oauth.login(settings)
+            print(f"stored a read-only token for {args.provider} at {settings.token_file}")
+        else:
+            print(oauth.logout(settings))
+        return
+    if args.command == "conformance":
+        from dossify import conformance as conformance_checks
+
+        (_name, adapter, typed), = selected_p0(config, [args.adapter])
+        failures = conformance_checks.check(adapter, typed, config.journal.cache_dir)
+        print("\n".join(failures) if failures else f"{args.adapter}: conforms")
+        raise SystemExit(1 if failures else 0)
     if args.command == "journal":
         from dossify.journal import run
 
-        run(config, apply=args.apply, only=args.adapters, force=args.force)
+        run(config, apply=args.apply, only=args.adapters, force=args.force,
+            profile=args.profile, review=args.review)
+        return
+    if args.command == "apply":
+        from dossify.workflow import apply_run
+
+        apply_run(config, args.run_id, args.force)
+        return
+    if args.command == "undo":
+        from dossify.workflow import undo_run
+
+        undo_run(config, args.run_id)
+        return
+    if args.command in ("doctor", "status"):
+        from dossify import workspace
+
+        raise SystemExit(getattr(workspace, args.command)(
+            *((config, args.config) if args.command == "doctor" else (config,))))
+    if args.command == "index":
+        from dossify.workspace import build_index
+
+        build_index(config)
+        return
+    if args.command == "search":
+        from dossify.workspace import search
+
+        search(config, args.query, args.limit)
+        return
+    if args.command == "compile":
+        from dossify.workspace import compile_document
+
+        compile_document(config, profile=args.profile, period=args.period,
+                         output=args.output, write=args.write)
         return
     if args.command == "oslog":
         from dossify import journal
@@ -177,7 +305,18 @@ def main() -> None:
 
         run(config, args.months, apply=args.apply, demote_h3=args.demote_h3)
         return
-    if args.command == "sync":
+    if args.command == "people" and args.people_command == "claims":
+        from dossify import identity_claims
+        from dossify.people import load_people
+
+        claims = identity_claims.collect(load_people(config.people_file))
+        for claim in claims:
+            window = f" {claim.valid_from or ''}..{claim.valid_to or ''}" if claim.valid_from or claim.valid_to else ""
+            print(f"{claim.person}: {claim.provider} {claim.identifier!r}{window} [{claim.status}; {claim.source}]")
+        findings = identity_claims.contradictions(claims)
+        print("\n".join(["", *findings]) if findings else "\nno contradictions")
+        raise SystemExit(1 if findings else 0)
+    if args.command == "people" or args.command == "sync":
         from dossify.sync import run
 
         run(config, apply=args.apply, snapshot_dir=args.snapshot_dir, report=args.report)
@@ -207,5 +346,12 @@ def main() -> None:
                     f"plan provider {plan.provider_id} is not enabled in this config"
                 ) from exc
             cache_dir = config.journal.cache_dir
-            results.append(execute_plan(adapter, typed, plan, cache_dir))
+            result = execute_plan(adapter, typed, plan, cache_dir)
+            if args.since_checkpoint:
+                previous = checkpoints.load(cache_dir, plan.provider_id)
+                print(f"{plan.provider_id}: checkpoint {checkpoints.state(previous, result)}", file=sys.stderr)
+                emitted = checkpoints.since(result, previous, args.overlap_days)
+                checkpoints.save(cache_dir, result)
+                result = emitted
+            results.append(result)
         _write_or_print({"format_version": "1.0", "results": results}, args.output)
