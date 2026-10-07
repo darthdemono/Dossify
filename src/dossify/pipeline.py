@@ -113,7 +113,8 @@ def build_plan(adapter: Adapter, config: BaseModel) -> ExecutionPlan:
         "config_fingerprint": config_fingerprint(config),
         "reads": reads,
         "permissions": RequestedPermissions(
-            read_paths=tuple(item.locator for item in reads)
+            read_paths=tuple(item.locator for item in reads),
+            network_hosts=tuple(getattr(adapter, "network_hosts", lambda _config: ())(config)),
         ),
         "cache_action": "read_or_write"
         if adapter.manifest.deterministic_output

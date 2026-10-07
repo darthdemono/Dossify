@@ -1,0 +1,70 @@
+{
+  "$id": "https://dossify.dev/schemas/adapters/http-json/1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allow_network": {
+      "default": false,
+      "title": "Allow Network",
+      "type": "boolean"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "event_type": {
+      "default": "record.item",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "id_field": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Id Field"
+    },
+    "items_path": {
+      "default": "",
+      "title": "Items Path",
+      "type": "string"
+    },
+    "time_field": {
+      "default": "timestamp",
+      "title": "Time Field",
+      "type": "string"
+    },
+    "title_field": {
+      "default": "title",
+      "title": "Title Field",
+      "type": "string"
+    },
+    "token_env": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Token Env"
+    },
+    "url": {
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "title": "HttpJsonConfig",
+  "type": "object"
+}
