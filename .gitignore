@@ -45,3 +45,9 @@ Reports/
 Thumbs.db
 .idea/
 .vscode/
+
+# Generated knowledge graph; it indexes private names and paths.
+graphify-out/
+
+# The owner's own plugins: auto-wired, never published.
+custom/

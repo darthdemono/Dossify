@@ -23,7 +23,7 @@ sources -> adapters -> typed facts -> privacy policy -> projections (journal, do
 - A failing source is recorded as failed and never stops the others (tested). An empty source is `no_events`, never silence.
 - Manual and LLM sections of a month file are never touched; only text between `auto:begin` and `auto:end` is generated.
 - Typed adapters never write. A plan that requests write access fails conformance (tested).
-- Sources that may share sensors (HyperOS Dashboard, Mi Fitness, a health archive) are reported side by side and never summed (tested).
+- Sources that may share sensors (a phone's activity export and a health archive, say) are reported side by side and never summed (tested).
 
 ## Claims
 
@@ -39,7 +39,7 @@ Checked on every run and stored in the ledger: identifier ownership conflicts, f
 
 ## Adapters and the evidence contract
 
-The contract lives in the separate `dossify-adapter-api` package, which depends only on pydantic. An adapter package registers an entry point in the `dossify.adapters` group. Dossify loads it only if the owner lists its name under `[adapters] external`, rejects a name that collides with a built-in provider, and expects `dossify conformance` to pass before the owner relies on it. The conformance suite checks the manifest, plan determinism, read-only plans, provenance identity, declared versus effective permissions and determinism of results.
+The contract lives in the separate `dossify-adapter-api` package, which depends only on pydantic. The owner's own plugins live in a gitignored `custom/` folder and are discovered automatically (a `[providers.<name>]` block still switches one on). A published adapter package registers an entry point in the `dossify.adapters` group instead. Dossify loads an installed adapter only if the owner lists its name under `[adapters] external`, rejects a name that collides with a built-in provider, and expects `dossify conformance` to pass before the owner relies on it. The conformance suite checks the manifest, plan determinism, read-only plans, provenance identity, declared versus effective permissions and determinism of results.
 
 ## Resumable imports
 
@@ -53,5 +53,6 @@ Network use is opt-in per provider. `oauth` implements a single-user, read-only 
 
 - Markdown is the canonical record; the ledger, caches and indexes are rebuildable (read-only derived data).
 - One privacy policy by data class, not per-provider switches. Provider-specific rules-file settings still apply on top.
+- Core stays general; anything niche is a plugin in `custom/`, so the public code never reveals what one person uses.
 - Legacy readers are wrapped, not rewritten, so a refactor cannot change a private journal's output.
 - Claims are counted or quoted; Dossify has no inference engine and says so.

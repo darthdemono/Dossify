@@ -1,77 +1,73 @@
-# Copy this to a private workspace. Do not put real paths, exports, or secrets
-# in this repository.
-people_file = "People.json"
-output_dir = "Journal"
+# Copy this to a private workspace.  Nothing here is read from the repository: every path is yours.
+# A source runs only if it has a [providers.<name>] block.  Options per source: docs/PROVIDERS.md.
 
-[journal]
-# Private data which Dossify reads but never creates or commits.
-workspace_root = "/absolute/path/to/private-workspace"
-rules_file = "Journal Rules.json"
-cache_dir = "/absolute/path/to/cache/dossify"
-# Optional source checkout used by the Canvas adapter.
-elteportal_path = "/absolute/path/to/EltePortal"
+output_dir = "Journal"                 # month files are written here
+people_file = "People.json"            # optional: who is who across services
+# timezone = "Europe/London"           # IANA name; the default is this machine's own
 
-# Optional live People registry synchronization. Values here are service
-# locations and environment-variable names only, never real credentials.
-[sync]
-nextcloud_url = "https://nextcloud.example/remote.php/dav/addressbooks/users/user/contacts"
-nextcloud_user = "user"
-nextcloud_password_env = "DOSSIFY_NEXTCLOUD_APP_PASSWORD"
-immich_url = "https://immich.example"
-immich_api_key_env = "DOSSIFY_IMMICH_API_KEY"
-snapshot_dir = "sync-snapshots"
-
-[providers.instagram]
-enabled = true
-
-[providers.git]
-enabled = true
-
-# Export-first v1 adapters. Each reads only the supplied file or directory;
-# `dossify plan` previews every intended read before `dossify facts` parses it.
-[providers.activitywatch]
-enabled = false
-source = "/absolute/path/to/activitywatch-export.json"
-
-[providers.nextcloud]
-enabled = false
-source = "/absolute/path/to/nextcloud-activity.json"
-
-[providers.immich]
-enabled = false
-source = "/absolute/path/to/immich-metadata.json"
-
-[providers.google_takeout]
-enabled = false
-source = "/absolute/path/to/Takeout"
-
-[providers.health_archive]
-enabled = false
-source = "/absolute/path/to/apple-health-export.xml"
-
-# Output shape and privacy. Omit [privacy] for no restriction.
 [output]
-profile = "journal"   # digest | journal | chronicle for month files
+profile = "journal"                    # digest | journal | chronicle
 
 [privacy]
-preset = "balanced"   # minimal | balanced | forensic
+preset = "balanced"                    # minimal | balanced | forensic; delete the block for no restriction
 
-[providers.hyperos_dashboard]
-enabled = false
-source = "/absolute/path/to/exports"   # folder holding dashboard-history.csv, or the file itself
-phone_model = "optional"
-hyperos_version = "optional"
+# ---- general sources -------------------------------------------------------
+[providers.git]
+roots = ["~/Code"]                     # folders whose children are repositories
 
-# Third-party adapters you have read and chosen to trust, by entry-point name.
-# [adapters]
-# external = ["my_provider"]
+[providers.bank_statements]
+sources = ["~/Documents/statements"]   # folders or files of CSV and PDF statements
 
-# Network is off unless allow_network = true and the host is listed.
+# ---- social media: Dossify reads the data download each platform gives you ---
+# Request your data from the platform, unzip it, and point `export` at the folder.
+[providers.instagram]
+export = "~/Exports/instagram"
+messages = "none"                      # "none" counts messages only; "threads" also names the chat
+
+[providers.facebook]
+export = "~/Exports/facebook"
+
+[providers.discord]
+export = "~/Exports/discord"
+
+[providers.snapchat]
+export = "~/Exports/snapchat"
+
+[providers.takeout]                    # Google
+export = ["~/Exports/google-takeout"]  # the folder holding each account's extracted Takeout
+search_text = false                    # true writes what you searched for; false counts only
+browser_urls = false
+
+# ---- optional, bundled niche sources: uncomment what matches your setup --------
+# [providers.lastfm]
+# user = "your-name"
+# api_key_env = "LASTFM_API_KEY"
+#
+# [providers.jellyfin]
+# user = "your-name"
+# db = "~/jellyfin/data/jellyfin.db"
+
+# ---- your own plugins: files in custom/ are found automatically; a block turns one on ----
+# [providers.my_plugin]
+# source = "~/Exports/something.csv"
+
+# ---- typed export adapters (read a file you give them) ----------------------
+# [providers.health_archive]
+# source = "~/Exports/health/export.xml"
+# [providers.activitywatch]
+# source = "~/Exports/activitywatch.json"
+# [providers.nextcloud]
+# source = "~/Exports/nextcloud-activity.json"
+# [providers.immich]
+# source = "~/Exports/immich-metadata.json"
+# [providers.google_takeout]
+# source = "~/Exports/Takeout"
+
+# ---- read-only network (off unless allow_network = true and the host is listed) ----
 # [providers.http_json]
-# enabled = true
 # allow_network = true
 # url = "https://service.example/api/records"
-# token_env = "DOSSIFY_SERVICE_TOKEN"
+# token_env = "SERVICE_TOKEN"
 # items_path = "data.items"
-# time_field = "timestamp"
-# title_field = "title"
+
+# [oauth.<name>] and [sync] are documented in the README.

@@ -18,67 +18,64 @@ The repository is deliberately empty of personal data. There are no journal entr
 - Runs locally. The engine has no cloud dependency, telemetry, or built-in remote filesystem access.
 - Has a versioned evidence contract: facts retain timestamps, source locators, sensitivity, and execution provenance.
 
-The provider registry currently covers finance, development, AI sessions, mail, social exports, search and video history, media services, photos, files, education, health, device activity, homelab services, games, work, and commutes. A provider being listed means Dossify knows the shape of that adapter; your private configuration decides whether it is enabled and where its records live.
+Sources come in three tiers, and the table below says which is which. **Core** sources are general: things many people have, such as git history, bank statements, and the data download you can request from a social platform. **Optional** sources are bundled but niche, such as a particular self-hosted media server, one log format, or a calendar convention. They are plug and play: nothing runs until you write the matching `[providers.<name>]` block. **Custom** plugins are your own, live in a gitignored `custom/` folder, and are described further down. Listing a provider means Dossify knows the shape of its adapter; your private configuration decides whether it is on and where its records live.
 
 <!-- providers:begin -->
-| Provider | Category | Facts | Support |
-|---|---|---|---|
-| `erste` | finance | transactions | typed_wrapped |
-| `brac` | finance | transactions | typed_wrapped |
-| `git` | development | commits | typed_wrapped |
-| `wakatime` | development | coding_time | typed_wrapped |
-| `claude` | ai | sessions | typed_wrapped |
-| `mail` | communications | messages | typed_wrapped |
-| `instagram` | social | posts, stories, messages, calls | typed_wrapped |
-| `facebook` | social | messages, calls | typed_wrapped |
-| `discord` | social | messages | typed_wrapped |
-| `snapchat` | social | messages | experimental |
-| `google_takeout` | activity | searches, youtube | stable_typed |
-| `lastfm` | media | scrobbles | typed_wrapped |
-| `navidrome` | media | plays | typed_wrapped |
-| `jellyfin` | media | plays | typed_wrapped |
-| `mal` | media | activity | experimental |
-| `simkl` | media | activity | experimental |
-| `immich` | photos | assets | stable_typed |
-| `nextcloud` | files | activity | stable_typed |
-| `documents` | files | created_documents | typed_wrapped |
-| `files` | files | filesystem_activity | typed_wrapped |
-| `neptun` | education | events | typed_wrapped |
-| `canvas` | education | events | typed_wrapped |
-| `grades` | education | grades | typed_wrapped |
-| `xiaomi_dashboard` | health | steps | external_producer |
-| `xiaomi_fitness` | health | workouts | external_producer |
-| `boots` | device | power_sessions | typed_wrapped |
-| `logins` | device | sessions | typed_wrapped |
-| `dnf` | device | package_changes | typed_wrapped |
-| `crashes` | device | crashes | experimental |
-| `shell` | device | commands | experimental |
-| `arr` | homelab | activity | typed_wrapped |
-| `github` | development | activity | typed_wrapped |
-| `torrents` | homelab | activity | experimental |
-| `games` | games | activity | typed_wrapped |
-| `saves` | games | save_activity | typed_wrapped |
-| `worklog` | work | shifts | typed_wrapped |
-| `commute` | travel | trips | typed_wrapped |
-| `activitywatch` | device | window_activity | stable_typed |
-| `health_archive` | health | steps | stable_typed |
-| `hyperos_dashboard` | health | steps, walking_duration, walking_distance, calories_estimated | stable_typed |
-| `http_json` | homelab | records | experimental |
+| Provider | Category | Facts | Tier | Support |
+|---|---|---|---|---|
+| `git` | development | commits | core | typed_wrapped |
+| `wakatime` | development | coding_time | optional | typed_wrapped |
+| `claude` | ai | sessions | optional | typed_wrapped |
+| `bank_statements` | finance | transactions | core | typed_wrapped |
+| `mail` | communications | messages | core | typed_wrapped |
+| `instagram` | social | posts, stories, messages, calls | core | typed_wrapped |
+| `facebook` | social | messages, calls | core | typed_wrapped |
+| `discord` | social | messages | core | typed_wrapped |
+| `snapchat` | social | messages | core | experimental |
+| `takeout` | activity | searches, youtube, location, play | core | typed_wrapped |
+| `google_takeout` | activity | searches, youtube | core | stable_typed |
+| `daily_csv` | health | daily_totals | core | typed_wrapped |
+| `lastfm` | media | scrobbles | optional | typed_wrapped |
+| `navidrome` | media | plays | optional | typed_wrapped |
+| `jellyfin` | media | plays | optional | typed_wrapped |
+| `mal` | media | activity | optional | experimental |
+| `simkl` | media | activity | optional | experimental |
+| `immich_db` | photos | assets | optional | typed_wrapped |
+| `immich` | photos | assets | core | stable_typed |
+| `ncloud` | files | activity | optional | typed_wrapped |
+| `nextcloud` | files | activity | core | stable_typed |
+| `docs` | files | created_documents | optional | typed_wrapped |
+| `files` | files | filesystem_activity | optional | typed_wrapped |
+| `boots` | device | power_sessions | optional | typed_wrapped |
+| `logins` | device | sessions | optional | typed_wrapped |
+| `dnf` | device | package_changes | optional | typed_wrapped |
+| `crashes` | device | crashes | optional | experimental |
+| `arr` | homelab | activity | optional | typed_wrapped |
+| `github` | development | activity | optional | typed_wrapped |
+| `torrents` | homelab | activity | optional | experimental |
+| `games` | games | activity | optional | typed_wrapped |
+| `saves` | games | save_activity | optional | typed_wrapped |
+| `worklog` | work | shifts | optional | typed_wrapped |
+| `commute` | travel | trips | optional | typed_wrapped |
+| `activitywatch` | device | window_activity | core | stable_typed |
+| `health_archive` | health | steps | core | stable_typed |
+| `http_json` | homelab | records | core | experimental |
+| `elteportal` | education | timetable, submissions, grades | optional | stable_typed |
 <!-- providers:end -->
 
 Generated by `dossify providers --markdown`, and a test fails if it drifts from the registry. Support levels: `stable_typed` runs through the typed plan, facts and provenance pipeline; `typed_wrapped` is a legacy reader running inside the typed pipeline (typed facts and provenance, reads not itemised in advance); `experimental` has limited format support; `external_producer` reads another tool's export; `planned` is a target only. Enabling a typed adapter replaces its legacy twin (`immich`, `nextcloud` for `ncloud`, `google_takeout` for `takeout`) instead of doubling it.
 
 ## The private boundary
 
-Dossify is the engine. Your private workspace is the memory. Keep the following files beside the journal, outside this repository.
+Dossify is the engine. Your private workspace is the memory. Keep these beside the journal, outside this repository.
 
 | File | Owns | Important rule |
 | --- | --- | --- |
-| `dossify.toml` | Paths, output location, enabled providers, and the names of private data files. | It is the entry point for every run. |
+| `dossify.toml` | Everything configurable: output location, timezone, privacy policy, and one `[providers.<name>]` block per source. | It is the single entry point. Nothing runs without a block. No secret ever goes in it. |
 | `People.json` | Canonical people and provider-specific identifiers. | The journal only reads it. `dossify sync` can explicitly reconcile it with exact-name Nextcloud and Immich records. |
-| `Journal Rules.json` | Source labels, export roots, device aliases, photo ownership rules, account-specific settings, and formatting policy. | It is typed data, not Python constants. |
+| `custom/` | Your own plugins, as Python files. | Gitignored, auto-discovered, switched on by a provider block. |
 
-[`People.example.json`](People.example.json), [`Journal Rules.example.json`](<Journal Rules.example.json>), and [`dossify.example.toml`](dossify.example.toml) show the public-safe shapes. [`schemas/People.schema.json`](schemas/People.schema.json) and [`schemas/Journal Rules.schema.json`](<schemas/Journal Rules.schema.json>) provide editor and validator contracts for those JSON files. Copy the examples into a private workspace and replace every example value there. Do not add your real files to this repository.
+[`dossify.example.toml`](dossify.example.toml) and [`People.example.json`](People.example.json) show the public-safe shapes, and [`docs/PROVIDERS.md`](docs/PROVIDERS.md) lists every option of every source. [`schemas/People.schema.json`](schemas/People.schema.json) validates the identity map for editors.
 
 `People.json` is intentionally more precise than a loose name replacement list. New maps use independent `instagram_names`, `instagram_usernames`, `facebook_names`, and `facebook_usernames` arrays, plus exact Nextcloud, Immich, Discord, and Snapchat identifiers. The canonical object key is the shared person name, so Immich needs only its stable person ID. Legacy paired Instagram entries remain supported read-only. Dossify normalizes Unicode presentation forms and case only, then requires an exact one-person match. It does not strip accents, trim names, reorder words, transliterate, or use fuzzy matching. An identifier that maps to more than one person remains unresolved.
 
@@ -117,11 +114,53 @@ The private workspace can also keep a small PowerShell wrapper so everyday use s
 & "$HOME/Documents/PrivateJournal/Run-Dossify.ps1" journal
 ```
 
+## Wiring a source
+
+The whole configuration is one file. A source is **off** until it has a block, and the block's keys are its options:
+
+```toml
+timezone = "Europe/London"
+
+[providers.git]
+roots = ["~/Code"]
+
+[providers.bank_statements]
+sources = ["~/Documents/statements"]
+
+[providers.lastfm]
+user = "your-name"
+api_key_env = "LASTFM_API_KEY"
+```
+
+Four conventions cover almost everything. A path option may start with `~`. `export` is the folder of an unzipped data download, one path or a list. A credential is never written in the file: you give the name of an environment variable (`api_key_env`) or a command that prints it (`api_key_command = ["tool", "arg"]`), so any secret manager works. `psql` is a command prefix that opens `psql` on the right database, for the few sources that read one, and `docker exec` or a plain `psql -h` both fit.
+
+There is no separate rules file. Everything that used to be a personal rule is an option on the provider it affects: merchant names and prefixes on `bank_statements`, camera ownership on the photo source, chat renames on the social ones. If you do not use a source you never see its options.
+
+`timezone` is an IANA name (the default is the machine's own). If you moved country, add `[[timezone_history]]` with an `until` instant and the `zone` that applied before it, and older records are shown in the zone you were in.
+
+## Social media: exports, not APIs
+
+Dossify never logs in to a social platform and never asks for a password or a token. It reads the **data download** each platform lets you request about yourself. That is the only supported route, and it keeps working when an API gets locked down.
+
+For each platform: request your data from its account settings, choose a machine-readable format (JSON for the Meta platforms, Discord and Snapchat, JSON or HTML activity for Google), wait for the archive, unzip it somewhere, and point the provider's `export` at that folder. Where exactly the request lives changes from time to time, so look in the platform's own account or privacy settings. `dossify ingest` can unpack downloaded zips into a tidy folder for you, but it is optional.
+
+| Provider | `export` points at | What Dossify reads | Text it can show |
+| --- | --- | --- | --- |
+| `instagram` | the unzipped Instagram download (or a folder holding it) | posts, stories, reels, likes, places, message counts | thread names only with `messages = "threads"` |
+| `facebook` | the unzipped Facebook download | posts, comments, check-ins, message counts | thread names only with `messages = "threads"` |
+| `discord` | the unzipped Discord data package | message counts per day | counts only |
+| `snapchat` | the unzipped Snapchat download | what the export carries per day | counts only |
+| `takeout` | a folder holding one Takeout per Google account, or a single account's Takeout | searches, YouTube watching, Chrome hosts, Timeline movement, Play installs, Fit | search text only with `search_text = true`, hosts only with `browser_urls = true` |
+
+Message bodies are never written to the journal. By default a chat is a count; with `messages = "threads"` it also names who the chat is with. Rename or group chats with `title_renames`, `communities` and `noise_chats` on the provider. The privacy policy still applies on top, so `minimal` can hide a whole source.
+
+A missing or unmounted `export` folder is not an error: that source goes quiet and the status report says so, so an unplugged disk never looks like a quiet month.
+
 ## Commands
 
 ### `dossify config-validate <config>`
 
-Loads the TOML and validates its structure. Run this first after moving a private workspace, adding a rules file, or changing a provider.
+Loads the TOML and validates its structure. Run this first after moving a private workspace or changing a provider block.
 
 ### `dossify journal <config> [adapters...] [--profile digest|journal|chronicle] [--review] [--apply] [--force]`
 
@@ -210,7 +249,75 @@ preset = "balanced"          # minimal | balanced | forensic; omit the block for
 financial = "count"          # per-class override
 ```
 
-`forensic` renders everything, `balanced` tallies messages, search terms and file paths, `minimal` hides or tallies every sensitive class. The policy applies to the journal, the compiled documents and the search index, and the ledger records which sources it changed. The provider-specific switches in the rules file still apply on top.
+`forensic` renders everything, `balanced` tallies messages, search terms and file paths, `minimal` hides or tallies every sensitive class. The policy applies to the journal, the compiled documents and the search index, and the ledger records which sources it changed. Source options such as `messages` and `search_text` still apply on top.
+
+## General tools in core, niche ones as plugins
+
+The public tool ships only **general** sources: things many people have and that can be described without naming anyone's accounts. Git history, a bank statement in CSV or PDF, a photo library's metadata, a calendar export, a messaging export, a health archive, a generic read-only JSON endpoint. If a source is useful to nearly anyone, it belongs in core, with fixtures and tests.
+
+Everything **niche** is plug and play. Some of it ships in the repository as optional sources you switch on with a block. The rest is yours, and stays out of the repository. Your university's portal, the app your particular phone uses, a bank's private API, the scripts that only make sense on your machine: those are plugins, and they live in a folder called `custom/` at the root of your checkout. That folder is gitignored and never published. You write a Python file (or a small package) in it, Dossify finds it on every run, and nobody reading the public code can tell what you use. That matters more than it sounds: a list of your banks, your university and your devices is exactly what someone writing a phishing message wants.
+
+Here is the whole contract. A file in `custom/` exposes `ADAPTER` (one adapter), `ADAPTERS` (several) or a `register()` function that returns them. An adapter is a small object with a manifest, a pydantic config model, a `plan` that says what it will read, and an `execute` that returns facts. It depends only on the `dossify-adapter-api` package, so it never needs the engine. Discovery is automatic, with no registration step, because this is your own code on your own machine. Discovery does not switch a plugin on, though. A `[providers.<name>]` block in your private `dossify.toml` does, so a plugin you are still writing cannot run by accident.
+
+The same rule covers plugins you install as packages. A package registers an entry point in the `dossify.adapters` group, and Dossify loads it only when a block of the same name exists. There is no separate allowlist: writing the block is the opt-in, and installing a package never runs it by itself. That is the route for sharing a niche reader with other people as a plain package that anyone can plug in.
+
+A plugin that fails to import is reported and skipped, never fatal, and `dossify custom <config>` lists what was found, what is on, and what is broken. `dossify conformance <config> <name>` runs the contract checks against a plugin, and `[privacy.source_classes]` tells the privacy policy what kind of data it carries so `minimal` and `balanced` cover it too. A plugin can mark a fact with `values = {"summary": true}` and it will lead its day, like a daily total. If the thing you wrote turns out to be useful to everyone, promote it: move it into core, strip anything personal, add tests.
+
+### Bundled niche adapters: ELTE portal
+
+The one niche adapter that talks to a service rather than reading a file is the ELTE portal one. It reads Canvas submissions and grades, and the Neptun timetable, for students whose university the [EltePortal](https://github.com/darthdemono/EltePortal) library supports. It lives in the same repository but needs nothing from the core, and the core needs nothing from it: the library is imported only when you switch the adapter on.
+
+Setting it up alongside Dossify is three steps. First download the library into Dossify's environment, which is what the `elte` extra does:
+
+```pwsh
+uv sync --extra elte
+```
+
+Then switch the adapter on with a block in your `dossify.toml`:
+
+```toml
+[providers.elteportal]
+neptun_ics = "~/Calendars/neptun.ics"    # a calendar export from Neptun; the timetable is read from this file
+canvas = true                            # submissions
+grades = true                            # the grade timeline
+# profile = "~/university.toml"          # another university's EltePortal profile; the bundled one when omitted
+```
+
+Then run `dossify doctor <config>`. It says whether the library is installed, whether the profile loads, whether a Canvas token resolves (it never prints the token), and whether the calendar file is there. Canvas reads use EltePortal's own secret handling, so set up the token the way its documentation describes; Dossify never stores or logs it. If you skip the first step, the run records `failed` with the exact command to run, and the other sources carry on.
+
+The Neptun side deliberately reads an exported calendar file and never logs in, so this adapter can never trigger the captcha lockout a bad Neptun login can cause. Live Neptun reads belong to the `elte` command itself.
+
+## Daily totals from any CSV
+
+`daily_csv` is a basic reader for a CSV with one row per day: steps, distance, calories, minutes, anything. You name the files and say which columns to show. The first column leads the line, the rest follow in brackets, and the line leads its day like coding time does. A phone dashboard exporter such as [hyperos-dashboard-history-exporter](https://github.com/darthdemono/hyperos-dashboard-history-exporter) is one way to get such a file, a wearable's export or a hand-kept spreadsheet is another; none of them is special.
+
+```toml
+[providers.daily_csv]
+files = ["~/Exports/dashboard"]          # a folder, a glob, a file, or a list; the newest file wins per day
+title = "Dashboard"
+
+[[providers.daily_csv.columns]]
+column = "steps"
+label = "steps"
+
+[[providers.daily_csv.columns]]
+columns = ["distance_m", "distance"]     # alternatives: the first one with a value wins
+scale = 0.001
+format = "{:.2f} km"
+kind = "distance"                        # also tidies a text value like 3km into 3 km
+
+[[providers.daily_csv.columns]]
+column = "calories"
+format = "{} kcal"
+```
+
+That produces lines such as `Dashboard: 5,013 steps (3.00 km; 205 kcal)`. Numbers are scaled and formatted by the column; text cells such as `51m10s` are tidied and shown as written.
+
+One more rule, because it is the point: core never names a specific bank, university, device vendor or service of yours. If you catch it doing that, it is a bug.
+
+## Bank statements
+
+`bank_statements` reads CSV and PDF statements from the folders or files listed under `sources`. Columns, encodings, dates and amounts are recognised by shape, and PDFs need poppler's `pdftotext`. Per source you can set `currency`, `whole_units` and `card_prefixes`; on the provider, `names`, `strip_prefixes`, `strip_suffixes` and `accent_digraphs` turn terminal-style counterparties into names a person would say, and `contacts_csv` can resolve people. See `docs/SUPPORT_POLICY.md` for what it recognises and where it has to guess.
 
 ## Claims and what Dossify refuses to infer
 
@@ -242,7 +349,7 @@ Day-wide summaries come first because they describe the whole day. Individual ev
 
 ## Photos and people
 
-Photo ownership is a rule, not a guess. A private photo policy can include an item when it was shot by one of your configured cameras **or** when the configured self identity is recognised in it. It can separately suppress copied images, exclude people, recognise special albums, and normalize historical device names. This is why camera aliases and self aliases live in `Journal Rules.json` instead of in code.
+Photo ownership is a rule, not a guess. The photo options of the photo source can include an item when it was shot by one of your configured cameras **or** when the configured self identity is recognised in it. It can separately suppress copied images, exclude people, recognise special albums, and normalize historical device names. This is why camera aliases and self aliases live in `Journal Rules.json` instead of in code.
 
 People work the same way. `People.json` is a data migration from an older identity map, not a cosmetic rename file. It preserves the evidence necessary to render a person correctly for each source. When the data says an association is uncertain, the correct output is uncertainty, not an invented name.
 
