@@ -48,3 +48,30 @@ source = "/absolute/path/to/Takeout"
 [providers.health_archive]
 enabled = false
 source = "/absolute/path/to/apple-health-export.xml"
+
+# Output shape and privacy. Omit [privacy] for no restriction.
+[output]
+profile = "journal"   # digest | journal | chronicle for month files
+
+[privacy]
+preset = "balanced"   # minimal | balanced | forensic
+
+[providers.hyperos_dashboard]
+enabled = false
+source = "/absolute/path/to/exports"   # folder holding dashboard-history.csv, or the file itself
+phone_model = "optional"
+hyperos_version = "optional"
+
+# Third-party adapters you have read and chosen to trust, by entry-point name.
+# [adapters]
+# external = ["my_provider"]
+
+# Network is off unless allow_network = true and the host is listed.
+# [providers.http_json]
+# enabled = true
+# allow_network = true
+# url = "https://service.example/api/records"
+# token_env = "DOSSIFY_SERVICE_TOKEN"
+# items_path = "data.items"
+# time_field = "timestamp"
+# title_field = "title"
